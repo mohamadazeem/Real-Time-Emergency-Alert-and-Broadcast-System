@@ -1,7 +1,7 @@
 # Shared JSON protocol foundation
 
 This module implements the version-1 message shapes in [docs/PROTOCOL.md](../docs/PROTOCOL.md).
-The server now uses this codec for JSON receiver registration; see
+The server now uses this codec for JSON receiver registration and admin login; see
 [server/README.md](../server/README.md) for supported connection states and run commands.
 This library defines and validates messages without implementing authentication,
 broadcasting, storage, or acknowledgement processing.
@@ -133,7 +133,7 @@ ProtocolMessage reply = codec.read(input); // null means clean EOF
 
 Receiver/admin teammates can branch on `message.type()` and then cast to the matching
 record to access its fields. Server teammates can use the same records for replies.
-The server currently implements registration state; other application actions remain
+The server currently implements registration and per-connection admin login; other application actions remain
 future work. Build from the repository
 root so Maven builds `common` before its dependents; use `mvn install` if another checkout
 or separately built module needs the local SNAPSHOT artifact.

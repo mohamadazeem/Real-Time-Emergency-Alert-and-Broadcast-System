@@ -272,6 +272,24 @@ class JsonMessageCodecTest {
         assertNull(assertThrows(ProtocolException.class, () -> codec.decode("not JSON")).requestId());
     }
 
+    @Test
+    void createAlertValidationCarriesTypedFailureMetadataWithoutChangingWireShapes() {
+        String prefix = "{\"version\":1,\"type\":\"CREATE_ALERT\",\"requestId\":\"" + ID + "\",";
+        ProtocolException payload = assertThrows(ProtocolException.class,
+                () -> codec.decode(prefix + "\"title\":\" \"}"));
+        assertEquals(MessageType.CREATE_ALERT, payload.messageType());
+        assertTrue(payload.isInvalidAlert());
+        assertEquals(ID, payload.requestId());
+        ProtocolException correlation = assertThrows(ProtocolException.class,
+                () -> codec.decode("{\"version\":1,\"type\":\"CREATE_ALERT\",\"requestId\":\"invalid\"}"));
+        assertEquals(MessageType.CREATE_ALERT, correlation.messageType());
+        assertFalse(correlation.isInvalidAlert());
+        ProtocolException envelope = assertThrows(ProtocolException.class,
+                () -> codec.decode("{\"version\":2,\"type\":\"CREATE_ALERT\"}"));
+        assertNull(envelope.messageType());
+        assertFalse(envelope.isInvalidAlert());
+    }
+
     private static ByteArrayInputStream frame(String json) {
         return new ByteArrayInputStream((json + "\n").getBytes(StandardCharsets.UTF_8));
     }

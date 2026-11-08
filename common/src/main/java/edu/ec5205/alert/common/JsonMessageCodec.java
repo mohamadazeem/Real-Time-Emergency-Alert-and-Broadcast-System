@@ -98,7 +98,8 @@ public final class JsonMessageCodec {
         try {
             type = MessageValidation.validate(tree.getAsJsonObject());
         } catch (ProtocolException e) {
-            throw new ProtocolException(e.getMessage(), recoverRequestId(tree.getAsJsonObject()));
+            throw new ProtocolException(e.getMessage(), recoverRequestId(tree.getAsJsonObject()),
+                    e.messageType(), e.isInvalidAlert());
         }
         try {
             return gson.fromJson(tree, type.modelClass());

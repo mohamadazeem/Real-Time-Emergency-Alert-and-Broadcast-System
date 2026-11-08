@@ -28,7 +28,22 @@ final class MessageValidation {
         } catch (IllegalArgumentException e) {
             throw new ProtocolException("Unknown message type; expected a documented MessageType name.");
         }
-        validateRecord(object, type.modelClass(), type.name());
+        try {
+            if (type == MessageType.CREATE_ALERT) {
+                // Validate correlation before classifying failures in the alert payload.
+                String requestId = string(required(object, "requestId"), "CREATE_ALERT.requestId");
+                validateText(requestId, "requestId", Messages.CreateAlert.class, "CREATE_ALERT.requestId");
+                try {
+                    validateRecord(object, type.modelClass(), type.name());
+                } catch (ProtocolException e) {
+                    throw new ProtocolException(e.getMessage(), null, type, true);
+                }
+            } else {
+                validateRecord(object, type.modelClass(), type.name());
+            }
+        } catch (ProtocolException e) {
+            throw new ProtocolException(e.getMessage(), null, type, e.isInvalidAlert());
+        }
         return type;
     }
 

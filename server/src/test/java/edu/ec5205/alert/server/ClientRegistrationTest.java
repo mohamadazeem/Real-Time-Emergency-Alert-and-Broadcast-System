@@ -5,6 +5,8 @@ import edu.ec5205.alert.common.JsonMessageCodec;
 import edu.ec5205.alert.common.Messages.*;
 import edu.ec5205.alert.common.Priority;
 import edu.ec5205.alert.common.ProtocolMessage;
+import edu.ec5205.alert.server.storage.AlertRepository;
+import edu.ec5205.alert.server.storage.SqliteDatabase;
 import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -12,8 +14,10 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -25,6 +29,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.io.TempDir;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** Real loopback sockets exercise framing, handler lifetime, and registry ownership. */
@@ -34,12 +39,19 @@ class ClientRegistrationTest {
     private static final String OTHER_ID = "223e4567-e89b-12d3-a456-426614174000";
     private final JsonMessageCodec codec = new JsonMessageCodec();
     private final ConnectionRegistry registry = new ConnectionRegistry();
+    private final AdminCredentials credentials = AdminCredentials.fromEnvironment(Map.of(
+            "EMERGENCY_ADMIN_USERNAME", "test-admin", "EMERGENCY_ADMIN_PASSWORD", "test-password"));
     private final List<Peer> peers = new ArrayList<>();
     private ServerSocket listener;
     private ExecutorService workers;
+    @TempDir Path directory;
+    private AlertRepository alerts;
+    private AlertCreationService alertCreation;
 
     @BeforeEach
-    void start() throws IOException {
+    void start() throws Exception {
+        alerts = new AlertRepository(new SqliteDatabase(directory.resolve("registration-test.db")));
+        alertCreation = new AlertCreationService(alerts, registry);
         listener = new ServerSocket(0, 8, InetAddress.getLoopbackAddress());
         workers = new ThreadPoolExecutor(4, 4, 0L, TimeUnit.MILLISECONDS,
                 new ArrayBlockingQueue<>(4), new ThreadPoolExecutor.AbortPolicy());
@@ -113,12 +125,13 @@ class ClientRegistrationTest {
 
     @Test
     void staleCleanupCannotRemoveReplacementOwner() throws Exception {
-        try (Socket oldSocket = new Socket(); Socket replacement = new Socket()) {
+        try (ClientConnection oldSocket = new ClientConnection(new Socket(), 32, registry::unregister);
+             ClientConnection replacement = new ClientConnection(new Socket(), 32, registry::unregister)) {
             assertTrue(registry.register(ID, oldSocket));
             registry.unregister(ID, oldSocket);
             assertTrue(registry.register(ID, replacement));
             registry.unregister(ID, oldSocket); // Simulate delayed old cleanup.
-            assertSame(replacement, registry.find(ID));
+            assertSame(replacement.socket(), registry.find(ID));
             registry.unregister(ID, replacement);
             assertNull(registry.find(ID));
         }
@@ -129,7 +142,8 @@ class ClientRegistrationTest {
         ExecutorService racers = Executors.newFixedThreadPool(2);
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch go = new CountDownLatch(1);
-        try (Socket first = new Socket(); Socket second = new Socket()) {
+        try (ClientConnection first = new ClientConnection(new Socket(), 32, registry::unregister);
+             ClientConnection second = new ClientConnection(new Socket(), 32, registry::unregister)) {
             Future<Boolean> firstResult = racers.submit(() -> {
                 ready.countDown();
                 go.await();
@@ -145,7 +159,7 @@ class ClientRegistrationTest {
             boolean firstWon = firstResult.get(3, TimeUnit.SECONDS);
             boolean secondWon = secondResult.get(3, TimeUnit.SECONDS);
             assertTrue(firstWon ^ secondWon);
-            assertSame(firstWon ? first : second, registry.find(ID));
+            assertSame(firstWon ? first.socket() : second.socket(), registry.find(ID));
         } finally {
             go.countDown();
             racers.shutdownNow();
@@ -189,11 +203,13 @@ class ClientRegistrationTest {
     }
 
     @Test
-    void loginIsExplicitlyUnavailableAndDoesNotAuthenticate() throws Exception {
+    void invalidLoginDoesNotAuthenticateAndCanBeRetried() throws Exception {
         Peer peer = connect();
-        peer.send(new Login("admin", "not-a-real-password"));
-        assertError(peer.read(), "INVALID_MESSAGE");
-        assertNull(peer.read());
+        peer.send(new Login("test-admin", "wrong-password"));
+        assertEquals(new LoginResult(false), peer.read());
+        peer.send(new Login("test-admin", "test-password"));
+        assertEquals(new LoginResult(true), peer.read());
+        assertFalse(peer.task.isDone());
     }
 
     @Test
@@ -214,7 +230,7 @@ class ClientRegistrationTest {
     void invalidSchemaEchoesRecoverableRequestId() throws Exception {
         Peer peer = connect();
         peer.raw("{\"version\":1,\"type\":\"CREATE_ALERT\",\"requestId\":\"" + OTHER_ID + "\"}\n");
-        assertEquals(OTHER_ID, assertError(peer.read(), "INVALID_MESSAGE").requestId());
+        assertEquals(OTHER_ID, assertError(peer.read(), "UNAUTHORIZED").requestId());
         assertNull(peer.read());
     }
 
@@ -254,6 +270,104 @@ class ClientRegistrationTest {
         assertNull(peer.read());
     }
 
+    @Test
+    void authenticatedAdminStaysOpenAndGetsAvailabilityErrorsRatherThanUnauthorized() throws Exception {
+        Peer admin = login();
+        admin.send(new CreateAlert(OTHER_ID, "Title", "Body", Category.GENERAL, Priority.LOW));
+        AlertAccepted accepted = assertInstanceOf(AlertAccepted.class, admin.read());
+        assertEquals(OTHER_ID, accepted.requestId());
+        assertTrue(alerts.findById(accepted.alertId()).isPresent());
+        for (ProtocolMessage request : List.of(new GetClients(), new GetAcks(ID), new GetHistory(1))) {
+            admin.send(request);
+            assertTrue(assertError(admin.read(), "INVALID_MESSAGE").message().contains("not implemented"));
+        }
+        admin.send(new Ack(ID));
+        assertError(admin.read(), "UNAUTHORIZED"); // ACK belongs to receivers.
+        assertFalse(admin.task.isDone());
+        assertNull(registry.find(ID));
+    }
+
+    @Test
+    void wrongUsernameDoesNotAuthorizeCommands() throws Exception {
+        Peer peer = connect();
+        peer.send(new Login("wrong-user", "test-password"));
+        assertEquals(new LoginResult(false), peer.read());
+        peer.send(new GetClients());
+        assertError(peer.read(), "UNAUTHORIZED");
+        assertNull(peer.read());
+    }
+
+    @Test
+    void receiverCannotBecomeAdminEvenWithCorrectCredentials() throws Exception {
+        Peer receiver = register(ID);
+        receiver.send(new Login("test-admin", "test-password"));
+        assertError(receiver.read(), "INVALID_MESSAGE");
+        receiver.send(new GetClients());
+        assertError(receiver.read(), "UNAUTHORIZED");
+        assertSame(receiver.serverSocket, registry.find(ID));
+        receiver.socket.close();
+        receiver.task.get(3, TimeUnit.SECONDS);
+        assertNull(registry.find(ID));
+        register(ID);
+    }
+
+    @Test
+    void adminCannotRegisterOrChangeItsRoleByLoggingInAgain() throws Exception {
+        Peer admin = login();
+        admin.send(new RegisterClient(ID, "Disallowed receiver"));
+        assertError(admin.read(), "INVALID_MESSAGE");
+        assertNull(registry.find(ID));
+        admin.send(new Login("wrong-user", "wrong-password"));
+        assertError(admin.read(), "INVALID_MESSAGE");
+        admin.send(new GetClients());
+        assertError(admin.read(), "INVALID_MESSAGE"); // Still an admin, not downgraded.
+        assertFalse(admin.task.isDone());
+    }
+
+    @Test
+    void adminAuthenticationIsIsolatedFromOtherConnections() throws Exception {
+        Peer admin = login();
+        Peer stranger = connect();
+        stranger.send(new GetClients());
+        assertError(stranger.read(), "UNAUTHORIZED");
+        assertNull(stranger.read());
+        stranger.task.get(3, TimeUnit.SECONDS);
+        Peer receiver = register(ID);
+        receiver.send(new GetClients());
+        assertError(receiver.read(), "UNAUTHORIZED");
+        admin.send(new GetClients());
+        assertError(admin.read(), "INVALID_MESSAGE");
+        assertSame(receiver.serverSocket, registry.find(ID));
+    }
+
+    @Test
+    void failedLoginLeavesConnectionEligibleForReceiverRegistration() throws Exception {
+        Peer peer = connect();
+        peer.send(new Login("test-admin", "wrong-password"));
+        assertEquals(new LoginResult(false), peer.read());
+        peer.send(new RegisterClient(ID, "Receiver after failed login"));
+        assertEquals(new Registered(ID), peer.read());
+        assertSame(peer.serverSocket, registry.find(ID));
+    }
+
+    @Test
+    void newConnectionDoesNotInheritDisconnectedAdminsRole() throws Exception {
+        Peer admin = login();
+        admin.socket.close();
+        admin.task.get(3, TimeUnit.SECONDS);
+        Peer newcomer = connect();
+        newcomer.send(new GetClients());
+        assertError(newcomer.read(), "UNAUTHORIZED");
+        assertNull(newcomer.read());
+    }
+
+    private Peer login() throws Exception {
+        Peer peer = connect();
+        peer.send(new Login("test-admin", "test-password"));
+        assertEquals(new LoginResult(true), peer.read());
+        return peer;
+    }
+
     private Peer register(String id) throws Exception {
         Peer peer = connect();
         peer.send(new RegisterClient(id, "Library PC"));
@@ -265,7 +379,7 @@ class ClientRegistrationTest {
         Socket socket = new Socket(InetAddress.getLoopbackAddress(), listener.getLocalPort());
         socket.setSoTimeout(3000);
         Socket serverSocket = listener.accept();
-        Future<?> task = workers.submit(new ClientHandler(serverSocket, registry, () -> {}));
+        Future<?> task = workers.submit(new ClientHandler(serverSocket, registry, credentials, alertCreation, () -> {}));
         Peer peer = new Peer(socket, serverSocket, task);
         peers.add(peer);
         return peer;

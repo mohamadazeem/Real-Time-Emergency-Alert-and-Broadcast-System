@@ -1,9 +1,10 @@
 # Shared JSON protocol foundation
 
 This module implements the version-1 message shapes in [docs/PROTOCOL.md](../docs/PROTOCOL.md).
-The existing server still speaks its temporary one-line text protocol. This milestone does
-not connect the JSON codec to the server, admin, or receiver, and implements no connection
-state, authentication, broadcasting, storage, or acknowledgement processing.
+The server now uses this codec for JSON receiver registration; see
+[server/README.md](../server/README.md) for supported connection states and run commands.
+This library defines and validates messages without implementing authentication,
+broadcasting, storage, or acknowledgement processing.
 
 ## Models
 
@@ -82,7 +83,7 @@ Clean EOF between frames returns `null`. EOF after any frame bytes but before LF
 failures raise `ProtocolException` (an `IOException`); socket failures propagate as
 `IOException`. After an oversized frame, close the connection: unread bytes remain and
 the codec deliberately does not attempt to drain an unbounded frame. A fully consumed
-but invalid frame does not consume the next frame. Future callers decide whether to
+but invalid frame does not consume the next frame. Callers decide whether to
 send ERROR or close; the codec does neither automatically.
 
 ## Interpretations of unspecified details
@@ -114,7 +115,7 @@ Gson transitively. JUnit is test-scoped and is not a production dependency. Team
 should import these shared models and codec rather than maintain separate JSON field
 names or parse messages using ad hoc string operations.
 
-Example for a future socket integration (not wired into this milestone):
+Example for a receiver socket integration:
 
 ```java
 import edu.ec5205.alert.common.JsonMessageCodec;
@@ -132,7 +133,8 @@ ProtocolMessage reply = codec.read(input); // null means clean EOF
 
 Receiver/admin teammates can branch on `message.type()` and then cast to the matching
 record to access its fields. Server teammates can use the same records for replies.
-State transitions and application actions remain future work. Build from the repository
+The server currently implements registration state; other application actions remain
+future work. Build from the repository
 root so Maven builds `common` before its dependents; use `mvn install` if another checkout
 or separately built module needs the local SNAPSHOT artifact.
 
@@ -154,4 +156,10 @@ oversized frame, flush behavior, and caller stream ownership.
 Milestone verification (2026-11-08): full reactor `mvn -U -B clean verify` passed with
 Temurin 17.0.21 and the normal Maven cache. All 59 tests passed (zero failures, errors,
 or skipped tests). A transient Maven Central DNS failure required a download retry.
-No server, admin, or client source changes were made for this milestone.
+No server, admin, or client source changes were made for that shared-foundation milestone.
+
+The subsequent registration milestone adds `ProtocolException.requestId()`: a valid UUID
+requestId recovered from parseable but invalid JSON, otherwise null. This lets the server
+correlate ERROR replies without exposing raw payloads. The wire message shapes remain
+unchanged. Verification now includes 60 common tests and 15 server registration tests;
+see [the server guide](../server/README.md).

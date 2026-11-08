@@ -16,6 +16,7 @@ import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
+import java.util.UUID;
 
 /** Stateless codec. Callers own the streams; use one reader per connection. */
 public final class JsonMessageCodec {
@@ -93,11 +94,27 @@ public final class JsonMessageCodec {
         if (tree == null || !tree.isJsonObject()) {
             throw new ProtocolException("Frame must contain one JSON object.");
         }
-        MessageType type = MessageValidation.validate(tree.getAsJsonObject());
+        MessageType type;
+        try {
+            type = MessageValidation.validate(tree.getAsJsonObject());
+        } catch (ProtocolException e) {
+            throw new ProtocolException(e.getMessage(), recoverRequestId(tree.getAsJsonObject()));
+        }
         try {
             return gson.fromJson(tree, type.modelClass());
         } catch (JsonParseException | IllegalArgumentException e) {
             throw new ProtocolException("JSON fields could not be converted to the documented message model.");
+        }
+    }
+
+    private static String recoverRequestId(JsonObject object) {
+        JsonElement field = object.get("requestId");
+        if (field == null || !field.isJsonPrimitive() || !field.getAsJsonPrimitive().isString()) return null;
+        String value = field.getAsString();
+        try {
+            return UUID.fromString(value).toString().equalsIgnoreCase(value) ? value : null;
+        } catch (IllegalArgumentException e) {
+            return null;
         }
     }
 

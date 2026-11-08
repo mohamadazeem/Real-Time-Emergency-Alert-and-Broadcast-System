@@ -2,5 +2,26 @@
   <modelVersion>4.0.0</modelVersion>
   <parent><groupId>edu.ec5205.alert</groupId><artifactId>emergency-alert-system</artifactId><version>0.1.0-SNAPSHOT</version></parent>
   <artifactId>server</artifactId>
-  <dependencies><dependency><groupId>edu.ec5205.alert</groupId><artifactId>common</artifactId><version>${project.version}</version></dependency></dependencies>
+  <dependencies>
+    <dependency>
+      <groupId>edu.ec5205.alert</groupId>
+      <artifactId>common</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>5.11.4</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.5.4</version>
+      </plugin>
+    </plugins>
+  </build>
 </project>

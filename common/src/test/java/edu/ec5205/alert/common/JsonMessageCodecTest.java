@@ -261,6 +261,17 @@ class JsonMessageCodecTest {
         assertFalse(error.getMessage().contains("private-secret"));
     }
 
+    @Test
+    void validationErrorRetainsOnlyAValidRecoverableRequestId() {
+        String invalid = "{\"version\":2,\"type\":\"UNKNOWN\",\"requestId\":\"" + ID + "\"}";
+        assertEquals(ID, assertThrows(ProtocolException.class, () -> codec.decode(invalid)).requestId());
+        for (String field : List.of("null", "1", "\"not-a-uuid\"", "\"1-1-1-1-1\"")) {
+            String json = "{\"version\":2,\"type\":\"UNKNOWN\",\"requestId\":" + field + "}";
+            assertNull(assertThrows(ProtocolException.class, () -> codec.decode(json)).requestId());
+        }
+        assertNull(assertThrows(ProtocolException.class, () -> codec.decode("not JSON")).requestId());
+    }
+
     private static ByteArrayInputStream frame(String json) {
         return new ByteArrayInputStream((json + "\n").getBytes(StandardCharsets.UTF_8));
     }

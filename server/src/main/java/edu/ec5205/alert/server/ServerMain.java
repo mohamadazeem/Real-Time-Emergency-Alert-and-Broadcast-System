@@ -11,7 +11,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
-/** Temporary text-line exercise before implementing the documented JSON protocol. */
+/** Bounded concurrent JSON server; currently implements receiver registration only. */
 public final class ServerMain {
     private static final int PORT = 5050;
 
@@ -23,6 +23,7 @@ public final class ServerMain {
                     4, 4, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(4),
                     new ThreadPoolExecutor.AbortPolicy());
             Set<Socket> connections = ConcurrentHashMap.newKeySet();
+            ConnectionRegistry registry = new ConnectionRegistry();
             Thread shutdownHook = new Thread(
                     () -> shutdown(serverSocket, executor, connections), "server-shutdown");
             Runtime.getRuntime().addShutdownHook(shutdownHook);
@@ -43,7 +44,7 @@ public final class ServerMain {
                     System.out.println("Accepted connection from " + socket.getRemoteSocketAddress());
                     connections.add(socket);
                     try {
-                        executor.execute(new ClientHandler(socket, () -> connections.remove(socket)));
+                        executor.execute(new ClientHandler(socket, registry, () -> connections.remove(socket)));
                     } catch (RejectedExecutionException e) {
                         System.err.println("Rejected connection from " + socket.getRemoteSocketAddress()
                                 + ": server capacity exhausted or shutting down.");

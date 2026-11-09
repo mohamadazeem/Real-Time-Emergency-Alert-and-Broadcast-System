@@ -2,6 +2,8 @@ package edu.ec5205.alert.server;
 
 import edu.ec5205.alert.server.storage.SqliteDatabase;
 import edu.ec5205.alert.server.storage.AlertRepository;
+import edu.ec5205.alert.server.storage.ClientRepository;
+import edu.ec5205.alert.server.storage.AcknowledgementRepository;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -34,9 +36,18 @@ public final class ServerMain {
             return;
         }
         AlertCreationService alertCreation;
+        ClientRepository clients;
+        AcknowledgementService acknowledgements;
+        HistoryService history;
+        AcknowledgementQueryService acknowledgementQueries;
         try {
             SqliteDatabase database = new SqliteDatabase(SqliteDatabase.pathFromEnvironment(System.getenv()));
-            alertCreation = new AlertCreationService(new AlertRepository(database), registry);
+            AlertRepository alerts = new AlertRepository(database);
+            alertCreation = new AlertCreationService(alerts, registry);
+            clients = new ClientRepository(database);
+            acknowledgements = new AcknowledgementService(alerts, new AcknowledgementRepository(database), registry);
+            history = new HistoryService(alerts);
+            acknowledgementQueries = new AcknowledgementQueryService(alerts, new AcknowledgementRepository(database));
         } catch (IOException | SQLException | IllegalArgumentException e) {
             System.err.println("Storage startup error: " + e.getMessage());
             System.exit(1);
@@ -69,7 +80,7 @@ public final class ServerMain {
                     });
                     connections.add(connection);
                     try {
-                        executor.execute(new ClientHandler(connection, registry, credentials, alertCreation, () -> {}));
+                        executor.execute(new ClientHandler(connection, registry, credentials, alertCreation, clients, acknowledgements, history, acknowledgementQueries, () -> {}));
                     } catch (RejectedExecutionException e) {
                         System.err.println("Rejected connection from " + socket.getRemoteSocketAddress()
                                 + ": server capacity exhausted or shutting down.");

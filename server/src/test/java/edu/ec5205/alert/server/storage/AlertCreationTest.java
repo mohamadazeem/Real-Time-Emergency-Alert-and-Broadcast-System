@@ -9,6 +9,9 @@ import edu.ec5205.alert.common.Priority;
 import edu.ec5205.alert.common.ProtocolException;
 import edu.ec5205.alert.common.ProtocolMessage;
 import edu.ec5205.alert.server.AdminCredentials;
+import edu.ec5205.alert.server.AcknowledgementService;
+import edu.ec5205.alert.server.HistoryService;
+import edu.ec5205.alert.server.AcknowledgementQueryService;
 import edu.ec5205.alert.server.AlertCreationService;
 import edu.ec5205.alert.server.ClientHandler;
 import edu.ec5205.alert.server.ConnectionRegistry;
@@ -248,7 +251,7 @@ class AlertCreationTest {
     }
 
     @Test
-    void creationBroadcastsStoredAlertButDoesNotEnableOtherNetworkCommands() throws Exception {
+    void creationBroadcastsStoredAlertAndHistoryRetrievesItWhileUnknownAckIsRejected() throws Exception {
         Peer receiver = connect();
         receiver.send(new RegisterClient(CLIENT_ID, "Receiver"));
         assertEquals(new Registered(CLIENT_ID), receiver.read());
@@ -258,9 +261,9 @@ class AlertCreationTest {
         AlertMessage delivered = assertInstanceOf(AlertMessage.class, receiver.read());
         assertEquals(alerts.findById(accepted.alertId()).orElseThrow(), delivered.alert());
         receiver.send(new GetHistory(1));
-        error(receiver.read(), "INVALID_MESSAGE");
+        assertEquals(new History(List.of(delivered.alert())), receiver.read());
         receiver.send(new Ack(CLIENT_ID));
-        error(receiver.read(), "INVALID_MESSAGE");
+        error(receiver.read(), "UNKNOWN_ALERT");
     }
 
     @Test
@@ -328,7 +331,9 @@ class AlertCreationTest {
         Socket socket = new Socket(InetAddress.getLoopbackAddress(), listener.getLocalPort());
         socket.setSoTimeout(3000);
         Socket serverSocket = listener.accept();
-        Future<?> task = workers.submit(new ClientHandler(serverSocket, registry, credentials, service, () -> {}));
+        Future<?> task = workers.submit(new ClientHandler(serverSocket, registry, credentials, service,
+                new ClientRepository(database), new AcknowledgementService(alerts, new AcknowledgementRepository(database), registry), new HistoryService(alerts),
+                new AcknowledgementQueryService(alerts, new AcknowledgementRepository(database)), () -> {}));
         Peer peer = new Peer(socket, serverSocket, task);
         peers.add(peer);
         return peer;
@@ -351,7 +356,7 @@ class AlertCreationTest {
             input = new BufferedInputStream(socket.getInputStream()); output = socket.getOutputStream();
         }
         void send(ProtocolMessage message) throws IOException { codec.write(output, message); }
-        ProtocolMessage read() throws IOException { return codec.read(input); }
+        ProtocolMessage read() throws IOException { ProtocolMessage next; do { next = codec.read(input); } while (next instanceof ClientList); return next; }
         void raw(String json) throws IOException { output.write((json + "\n").getBytes(StandardCharsets.UTF_8)); output.flush(); }
     }
 }

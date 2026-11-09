@@ -31,13 +31,20 @@ public final class AcknowledgementRepository {
     }
 
     public List<Acknowledgement> findByAlertId(String alertId) throws SQLException {
+        return findByAlertId(alertId, Integer.MAX_VALUE);
+    }
+
+    /** Bounded ordered prefix for frame-size checks; callers must never publish a truncated list. */
+    public List<Acknowledgement> findByAlertId(String alertId, int maximumRows) throws SQLException {
         StorageValues.id(alertId);
+        if (maximumRows < 1) throw new IllegalArgumentException("Maximum rows must be positive.");
         return database.transaction(connection -> {
             try (PreparedStatement statement = connection.prepareStatement("""
                     SELECT clientId, acknowledgedAt FROM acknowledgements WHERE alertId = ?
-                    ORDER BY acknowledgedAtSort, clientId
+                    ORDER BY acknowledgedAtSort, clientId LIMIT ?
                     """)) {
                 statement.setString(1, alertId);
+                statement.setInt(2, maximumRows);
                 try (ResultSet result = statement.executeQuery()) {
                     List<Acknowledgement> acknowledgements = new ArrayList<>();
                     while (result.next()) acknowledgements.add(new Acknowledgement(

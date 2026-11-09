@@ -7,6 +7,8 @@ import edu.ec5205.alert.common.Priority;
 import edu.ec5205.alert.common.ProtocolMessage;
 import edu.ec5205.alert.server.storage.AlertRepository;
 import edu.ec5205.alert.server.storage.SqliteDatabase;
+import edu.ec5205.alert.server.storage.ClientRepository;
+import edu.ec5205.alert.server.storage.AcknowledgementRepository;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -35,6 +37,53 @@ class OutgoingDeliveryTest {
     private static final String SECOND = "223e4567-e89b-12d3-a456-426614174000";
     private final JsonMessageCodec codec = new JsonMessageCodec();
     @TempDir Path directory;
+
+    @Test
+    void slowAdminOverflowCannotPreventAckCommitOrHealthyAdminNotification() throws Exception {
+        ConnectionRegistry registry = new ConnectionRegistry();
+        SqliteDatabase database = new SqliteDatabase(directory.resolve("slow-admin.db"));
+        AlertRepository alerts = new AlertRepository(database);
+        AcknowledgementRepository acks = new AcknowledgementRepository(database);
+        new ClientRepository(database).save(new ClientInfo(FIRST, "Receiver"));
+        AcknowledgementService service = new AcknowledgementService(alerts, acks, registry);
+        BlockingOutput blocked = new BlockingOutput();
+        TrackingOutput healthy = new TrackingOutput();
+        try (ClientConnection slow = new ClientConnection(new TestSocket(blocked), 1, registry::unregister);
+             ClientConnection fast = new ClientConnection(new TestSocket(healthy), 32, registry::unregister)) {
+            registry.authenticateAdmin(slow); slow.startWriter();
+            assertTrue(blocked.entered.await(3, TimeUnit.SECONDS)); // LOGIN_RESULT blocked in write.
+            registry.authenticateAdmin(fast); fast.startWriter();
+            Alert first = new Alert(UUID.randomUUID().toString(), "2026-11-09T00:00:00Z", "First", "Body", Category.FIRE, Priority.LOW);
+            Alert second = new Alert(UUID.randomUUID().toString(), "2026-11-09T00:00:01Z", "Second", "Body", Category.FIRE, Priority.LOW);
+            alerts.insert(first); alerts.insert(second);
+            assertTimeoutPreemptively(Duration.ofSeconds(3), () -> assertTrue(service.acknowledge(first.id(), FIRST)));
+            assertFalse(slow.isClosed());
+            assertTimeoutPreemptively(Duration.ofSeconds(3), () -> assertTrue(service.acknowledge(second.id(), FIRST)));
+            assertTrue(slow.isClosed()); assertTrue(slow.awaitWriter(3000));
+            assertFalse(fast.isClosed()); fast.finish();
+            ByteArrayInputStream frames = new ByteArrayInputStream(healthy.toByteArray());
+            assertEquals(new LoginResult(true), codec.read(frames));
+            for (Alert alert : List.of(first, second)) {
+                var stored = acks.findByAlertId(alert.id()); assertEquals(1, stored.size());
+                assertEquals(new AckStatus(alert.id(), FIRST, stored.get(0).acknowledgedAt()), codec.read(frames));
+            }
+            assertNull(codec.read(frames));
+        }
+    }
+
+    @Test
+    void closingAdminRemovesSubscriptionAndShutdownReleasesItsWriter() throws Exception {
+        ConnectionRegistry registry = new ConnectionRegistry();
+        TrackingOutput output = new TrackingOutput();
+        try (ClientConnection admin = new ClientConnection(new TestSocket(output), 4, registry::unregister)) {
+            registry.authenticateAdmin(admin);
+            admin.startWriter(); admin.finish();
+            assertTrue(admin.awaitWriter(100)); assertTrue(output.closed);
+            registry.notifyAdmins(new AckStatus(FIRST, SECOND, "2026-11-09T00:00:00Z"));
+            ByteArrayInputStream frames = new ByteArrayInputStream(output.toByteArray());
+            assertEquals(new LoginResult(true), codec.read(frames)); assertNull(codec.read(frames));
+        }
+    }
 
     @Test
     void fullQueueDisconnectsBlockedReceiverWithoutBlockingPersistenceOrHealthyDelivery() throws Exception {

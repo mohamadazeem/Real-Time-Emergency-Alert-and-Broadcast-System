@@ -3,8 +3,12 @@ package edu.ec5205.alert.admin;
 import edu.ec5205.alert.admin.network.AdminConnection;
 import edu.ec5205.alert.admin.service.AdminAuthService;
 import edu.ec5205.alert.admin.service.AdminAuthService.LoginOutcome;
+import edu.ec5205.alert.admin.ui.LoginFrame;
 import edu.ec5205.alert.common.Messages;
 import edu.ec5205.alert.common.ProtocolException;
+
+import javax.swing.SwingUtilities;
+import java.awt.GraphicsEnvironment;
 import java.io.Console;
 import java.io.IOException;
 import java.net.ConnectException;
@@ -14,19 +18,38 @@ import java.util.Scanner;
 import java.util.concurrent.TimeoutException;
 
 /**
- * Console-based entry point for the Admin application (Stage 1).
+ * Entry point for the Admin application.
  * <p>
- * Handles server connection setup, administrator authentication,
- * and optional post-login connectivity diagnostics.
+ * By default launches the Swing desktop GUI (LoginFrame -> DashboardFrame).
+ * Also preserves console mode when launched in a headless environment or with --console.
  */
 public final class AdminMain {
 
     private AdminMain() {}
 
     public static void main(String[] args) {
+        boolean forceConsole = false;
+        for (String arg : args) {
+            if ("--console".equalsIgnoreCase(arg) || "--cli".equalsIgnoreCase(arg)) {
+                forceConsole = true;
+                break;
+            }
+        }
+
+        if (forceConsole || GraphicsEnvironment.isHeadless()) {
+            runConsoleMode();
+        } else {
+            SwingUtilities.invokeLater(() -> {
+                LoginFrame loginFrame = new LoginFrame();
+                loginFrame.setVisible(true);
+            });
+        }
+    }
+
+    public static void runConsoleMode() {
         System.out.println("===============================================================");
         System.out.println(" Emergency Alert & Broadcast System - Admin Application");
-        System.out.println(" Stage 1: Basic Connectivity & Admin Authentication");
+        System.out.println(" Stage 1: Basic Connectivity & Admin Authentication (CLI)");
         System.out.println("===============================================================");
 
         Scanner scanner = new Scanner(System.in);

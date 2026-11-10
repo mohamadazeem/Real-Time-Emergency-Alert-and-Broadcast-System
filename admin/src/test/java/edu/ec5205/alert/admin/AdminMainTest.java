@@ -36,7 +36,7 @@ class AdminMainTest {
             System.setOut(new PrintStream(capturedOut, true, StandardCharsets.UTF_8));
             System.setErr(new PrintStream(capturedErr, true, StandardCharsets.UTF_8));
 
-            AdminMain.main(new String[0]);
+            AdminMain.main(new String[]{"--console"});
 
             String stdout = capturedOut.toString(StandardCharsets.UTF_8);
             String stderr = capturedErr.toString(StandardCharsets.UTF_8);

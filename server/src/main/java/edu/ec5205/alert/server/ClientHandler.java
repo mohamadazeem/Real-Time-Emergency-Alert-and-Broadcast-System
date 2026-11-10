@@ -3,6 +3,12 @@ package edu.ec5205.alert.server;
 import edu.ec5205.alert.common.JsonMessageCodec;
 import edu.ec5205.alert.common.MessageType;
 import edu.ec5205.alert.common.Messages.CreateAlert;
+import edu.ec5205.alert.common.Messages.Ack;
+import edu.ec5205.alert.common.Messages.AckResult;
+import edu.ec5205.alert.common.Messages.GetHistory;
+import edu.ec5205.alert.common.Messages.GetAcks;
+import edu.ec5205.alert.common.Messages.GetClients;
+import edu.ec5205.alert.server.storage.ClientRepository;
 import edu.ec5205.alert.common.Messages.ErrorMessage;
 import edu.ec5205.alert.common.Messages.Login;
 import edu.ec5205.alert.common.Messages.LoginResult;
@@ -22,21 +28,33 @@ public final class ClientHandler implements Runnable {
     private final ConnectionRegistry registry;
     private final AdminCredentials credentials;
     private final AlertCreationService alertCreation;
+    private final ClientRepository clients;
+    private final AcknowledgementService acknowledgements;
+    private final HistoryService history;
+    private final AcknowledgementQueryService acknowledgementQueries;
     private final Runnable onFinished;
     private final JsonMessageCodec codec = new JsonMessageCodec();
 
     public ClientHandler(Socket socket, ConnectionRegistry registry, AdminCredentials credentials,
-                         AlertCreationService alertCreation, Runnable onFinished) {
-        this(new ClientConnection(socket, 32, registry::unregister), registry, credentials, alertCreation, onFinished);
+                         AlertCreationService alertCreation, ClientRepository clients,
+                         AcknowledgementService acknowledgements, HistoryService history,
+                         AcknowledgementQueryService acknowledgementQueries, Runnable onFinished) {
+        this(new ClientConnection(socket, 32, registry::unregister), registry, credentials, alertCreation, clients, acknowledgements, history, acknowledgementQueries, onFinished);
     }
 
     public ClientHandler(ClientConnection connection, ConnectionRegistry registry, AdminCredentials credentials,
-                         AlertCreationService alertCreation, Runnable onFinished) {
+                         AlertCreationService alertCreation, ClientRepository clients,
+                         AcknowledgementService acknowledgements, HistoryService history,
+                         AcknowledgementQueryService acknowledgementQueries, Runnable onFinished) {
         this.connection = connection;
         this.socket = connection.socket();
         this.registry = registry;
         this.credentials = credentials;
         this.alertCreation = alertCreation;
+        this.clients = clients;
+        this.acknowledgements = acknowledgements;
+        this.history = history;
+        this.acknowledgementQueries = acknowledgementQueries;
         this.onFinished = onFinished;
     }
 
@@ -53,6 +71,20 @@ public final class ClientHandler implements Runnable {
                 try {
                     message = codec.read(input);
                 } catch (ProtocolException e) {
+                    if (e.messageType() == MessageType.GET_ACKS && role != ConnectionRole.ADMIN) {
+                        connection.send(new ErrorMessage("UNAUTHORIZED", "GET_ACKS requires an authenticated admin.", e.requestId()));
+                        if (role == ConnectionRole.UNREGISTERED) return;
+                        continue;
+                    }
+                    if (e.messageType() == MessageType.GET_HISTORY && role == ConnectionRole.UNREGISTERED) {
+                        connection.send(new ErrorMessage("UNAUTHORIZED", "GET_HISTORY requires an authenticated admin or registered receiver.", e.requestId()));
+                        return;
+                    }
+                    if (e.messageType() == MessageType.ACK && role != ConnectionRole.RECEIVER) {
+                        connection.send(new ErrorMessage("UNAUTHORIZED", "ACK requires a registered receiver.", e.requestId()));
+                        if (role == ConnectionRole.UNREGISTERED) return;
+                        continue;
+                    }
                     if (e.messageType() == MessageType.CREATE_ALERT && role != ConnectionRole.ADMIN) {
                         connection.send(new ErrorMessage("UNAUTHORIZED", "CREATE_ALERT requires an authenticated admin.", e.requestId()));
                         if (role == ConnectionRole.UNREGISTERED) return;
@@ -79,8 +111,10 @@ public final class ClientHandler implements Runnable {
                         continue;
                     }
                     boolean success = credentials.matches(login);
-                    if (success) role = ConnectionRole.ADMIN;
-                    connection.send(new LoginResult(success));
+                    if (success) {
+                        role = ConnectionRole.ADMIN;
+                        registry.authenticateAdmin(connection);
+                    } else connection.send(new LoginResult(false));
                     continue;
                 }
 
@@ -93,13 +127,52 @@ public final class ClientHandler implements Runnable {
                         connection.send(new ErrorMessage("INVALID_MESSAGE", "This connection is already registered.", null));
                         continue;
                     }
-                    if (!registry.register(registration.clientId(), connection)) {
-                        if (!connection.isClosed()) connection.send(new ErrorMessage("DUPLICATE_CLIENT", "Client ID is already active.", null));
-                        return;
+                    try {
+                        if (!registry.register(registration, connection, clients)) {
+                            if (!connection.isClosed()) connection.send(new ErrorMessage("DUPLICATE_CLIENT", "Client ID is already active.", null));
+                            return;
+                        }
+                    } catch (SQLException e) {
+                        connection.send(new ErrorMessage("INTERNAL_ERROR", "Unable to store the client registration.", null));
+                        continue; // Still unregistered; reservation was released and retry is safe.
                     }
                     registeredId = registration.clientId();
                     role = ConnectionRole.RECEIVER;
                     System.out.println("Registered client " + registeredId + " from " + socket.getRemoteSocketAddress());
+                    continue;
+                }
+
+                if (message instanceof GetClients && role == ConnectionRole.ADMIN) {
+                    registry.sendClientList(connection);
+                    continue;
+                }
+
+                if (message instanceof GetAcks request && role == ConnectionRole.ADMIN) {
+                    try {
+                        connection.send(acknowledgementQueries.retrieve(request));
+                    } catch (SQLException | ProtocolException e) {
+                        connection.send(new ErrorMessage("INTERNAL_ERROR", "Unable to retrieve acknowledgements.", null));
+                    }
+                    continue;
+                }
+
+                if (message instanceof GetHistory request && role != ConnectionRole.UNREGISTERED) {
+                    try {
+                        connection.send(history.retrieve(request));
+                    } catch (SQLException | ProtocolException e) {
+                        connection.send(new ErrorMessage("INTERNAL_ERROR", "Unable to retrieve alert history.", null));
+                    }
+                    continue;
+                }
+
+                if (message instanceof Ack request && role == ConnectionRole.RECEIVER) {
+                    try {
+                        if (acknowledgements.acknowledge(request.alertId(), registeredId)) {
+                            connection.send(new AckResult(request.alertId(), true));
+                        } else connection.send(new ErrorMessage("UNKNOWN_ALERT", "The referenced alert does not exist.", null));
+                    } catch (SQLException e) {
+                        connection.send(new ErrorMessage("INTERNAL_ERROR", "Unable to store the acknowledgement.", null));
+                    }
                     continue;
                 }
 
@@ -134,7 +207,7 @@ public final class ClientHandler implements Runnable {
         } catch (IOException e) {
             if (!connection.isClosed()) System.err.println("Client I/O error from " + socket.getRemoteSocketAddress() + ": " + e.getMessage());
         } finally {
-            if (registeredId != null) registry.unregister(registeredId, connection);
+            registry.unregister(connection);
             connection.finish();
             if (input != null) {
                 try { input.close(); } catch (IOException e) { /* Socket is already closed. */ }

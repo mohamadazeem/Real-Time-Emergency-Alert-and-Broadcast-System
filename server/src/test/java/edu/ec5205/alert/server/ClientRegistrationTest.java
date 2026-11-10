@@ -6,6 +6,8 @@ import edu.ec5205.alert.common.Messages.*;
 import edu.ec5205.alert.common.Priority;
 import edu.ec5205.alert.common.ProtocolMessage;
 import edu.ec5205.alert.server.storage.AlertRepository;
+import edu.ec5205.alert.server.storage.ClientRepository;
+import edu.ec5205.alert.server.storage.AcknowledgementRepository;
 import edu.ec5205.alert.server.storage.SqliteDatabase;
 import java.io.BufferedInputStream;
 import java.io.IOException;
@@ -47,10 +49,17 @@ class ClientRegistrationTest {
     @TempDir Path directory;
     private AlertRepository alerts;
     private AlertCreationService alertCreation;
+    private ClientRepository clients;
+    private AcknowledgementService acknowledgements;
+    private AcknowledgementQueryService acknowledgementQueries;
 
     @BeforeEach
     void start() throws Exception {
-        alerts = new AlertRepository(new SqliteDatabase(directory.resolve("registration-test.db")));
+        SqliteDatabase database = new SqliteDatabase(directory.resolve("registration-test.db"));
+        alerts = new AlertRepository(database);
+        clients = new ClientRepository(database);
+        acknowledgements = new AcknowledgementService(alerts, new AcknowledgementRepository(database), registry);
+        acknowledgementQueries = new AcknowledgementQueryService(alerts, new AcknowledgementRepository(database));
         alertCreation = new AlertCreationService(alerts, registry);
         listener = new ServerSocket(0, 8, InetAddress.getLoopbackAddress());
         workers = new ThreadPoolExecutor(4, 4, 0L, TimeUnit.MILLISECONDS,
@@ -77,7 +86,7 @@ class ClientRegistrationTest {
         assertFalse(peer.task.isDone(), "Handler must remain available after REGISTERED");
 
         peer.send(new GetHistory(1));
-        assertError(peer.read(), "INVALID_MESSAGE"); // History is a future milestone.
+        assertEquals(new History(List.of()), peer.read());
         assertSame(peer.serverSocket, registry.find(ID));
         assertFalse(peer.task.isDone());
     }
@@ -92,7 +101,7 @@ class ClientRegistrationTest {
         duplicate.task.get(3, TimeUnit.SECONDS);
         assertSame(owner.serverSocket, registry.find(ID));
         owner.send(new GetHistory(1));
-        assertError(owner.read(), "INVALID_MESSAGE");
+        assertEquals(new History(List.of()), owner.read());
     }
 
     @Test
@@ -110,6 +119,8 @@ class ClientRegistrationTest {
         assertNull(loser.read());
         loser.task.get(3, TimeUnit.SECONDS);
         assertSame(winner.serverSocket, registry.find(ID));
+        assertEquals(winner == first ? "First" : "Second", clients.findById(ID).orElseThrow().name(),
+                "Only the winning registration may persist its display name");
     }
 
     @Test
@@ -223,7 +234,7 @@ class ClientRegistrationTest {
         assertNull(registry.find(ID));
         assertSame(healthy.serverSocket, registry.find(OTHER_ID));
         healthy.send(new GetHistory(1));
-        assertError(healthy.read(), "INVALID_MESSAGE");
+        assertEquals(new History(List.of()), healthy.read());
     }
 
     @Test
@@ -271,16 +282,14 @@ class ClientRegistrationTest {
     }
 
     @Test
-    void authenticatedAdminStaysOpenAndGetsAvailabilityErrorsRatherThanUnauthorized() throws Exception {
+    void authenticatedAdminStaysOpenAndCanQueryHistoryRatherThanUnauthorized() throws Exception {
         Peer admin = login();
         admin.send(new CreateAlert(OTHER_ID, "Title", "Body", Category.GENERAL, Priority.LOW));
         AlertAccepted accepted = assertInstanceOf(AlertAccepted.class, admin.read());
         assertEquals(OTHER_ID, accepted.requestId());
         assertTrue(alerts.findById(accepted.alertId()).isPresent());
-        for (ProtocolMessage request : List.of(new GetClients(), new GetAcks(ID), new GetHistory(1))) {
-            admin.send(request);
-            assertTrue(assertError(admin.read(), "INVALID_MESSAGE").message().contains("not implemented"));
-        }
+        admin.send(new GetHistory(1));
+        assertEquals(1, assertInstanceOf(History.class, admin.read()).alerts().size());
         admin.send(new Ack(ID));
         assertError(admin.read(), "UNAUTHORIZED"); // ACK belongs to receivers.
         assertFalse(admin.task.isDone());
@@ -320,7 +329,9 @@ class ClientRegistrationTest {
         admin.send(new Login("wrong-user", "wrong-password"));
         assertError(admin.read(), "INVALID_MESSAGE");
         admin.send(new GetClients());
-        assertError(admin.read(), "INVALID_MESSAGE"); // Still an admin, not downgraded.
+        // Read a non-membership reply to verify the admin role after repeated LOGIN.
+        admin.send(new GetAcks(ID));
+        assertError(admin.read(), "UNKNOWN_ALERT");
         assertFalse(admin.task.isDone());
     }
 
@@ -336,7 +347,8 @@ class ClientRegistrationTest {
         receiver.send(new GetClients());
         assertError(receiver.read(), "UNAUTHORIZED");
         admin.send(new GetClients());
-        assertError(admin.read(), "INVALID_MESSAGE");
+        admin.send(new GetAcks(OTHER_ID));
+        assertError(admin.read(), "UNKNOWN_ALERT");
         assertSame(receiver.serverSocket, registry.find(ID));
     }
 
@@ -379,7 +391,7 @@ class ClientRegistrationTest {
         Socket socket = new Socket(InetAddress.getLoopbackAddress(), listener.getLocalPort());
         socket.setSoTimeout(3000);
         Socket serverSocket = listener.accept();
-        Future<?> task = workers.submit(new ClientHandler(serverSocket, registry, credentials, alertCreation, () -> {}));
+        Future<?> task = workers.submit(new ClientHandler(serverSocket, registry, credentials, alertCreation, clients, acknowledgements, new HistoryService(alerts), acknowledgementQueries, () -> {}));
         Peer peer = new Peer(socket, serverSocket, task);
         peers.add(peer);
         return peer;
@@ -408,7 +420,7 @@ class ClientRegistrationTest {
         }
 
         void send(ProtocolMessage message) throws IOException { codec.write(output, message); }
-        ProtocolMessage read() throws IOException { return codec.read(input); }
+        ProtocolMessage read() throws IOException { ProtocolMessage next; do { next = codec.read(input); } while (next instanceof ClientList); return next; }
         void raw(String text) throws IOException {
             output.write(text.getBytes(StandardCharsets.UTF_8));
             output.flush();

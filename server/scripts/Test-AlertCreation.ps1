@@ -38,7 +38,12 @@ function Open-Connection {
 function Exchange($Connection, $Message) {
     # LOGIN frames contain passwords: never print outgoing messages.
     $Connection.Writer.WriteLine(($Message | ConvertTo-Json -Compress))
-    $line = $Connection.Reader.ReadLine()
+    # Membership snapshots are asynchronous; these regression checks await other reply types.
+    do {
+        $line = $Connection.Reader.ReadLine()
+        if ($null -eq $line) { throw 'Connection closed before a reply' }
+        $parsedFrame = $line | ConvertFrom-Json
+    } while ($parsedFrame.type -ceq 'CLIENT_LIST')
     if ($null -eq $line) { throw 'Connection closed before a reply' }
     return ($line | ConvertFrom-Json)
 }

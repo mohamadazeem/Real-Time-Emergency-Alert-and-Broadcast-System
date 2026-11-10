@@ -34,7 +34,12 @@ function Open-Connection {
     } catch { $client.Dispose(); throw }
 }
 function Read-Frame($Connection) {
-    $line = $Connection.Reader.ReadLine()
+    # Membership snapshots are asynchronous; these regression checks await other reply types.
+    do {
+        $line = $Connection.Reader.ReadLine()
+        if ($null -eq $line) { throw 'Connection closed before a reply' }
+        $parsedFrame = $line | ConvertFrom-Json
+    } while ($parsedFrame.type -ceq 'CLIENT_LIST')
     if ($null -eq $line) { throw 'Connection closed before a reply' }
     # Keep raw JSON so PowerShell date conversion cannot lose timestamp precision.
     return [pscustomobject]@{ Value = ($line | ConvertFrom-Json); Json = $line }
@@ -94,7 +99,7 @@ try {
     if ($firstAlert.Json -cne $secondAlert.Json) { throw 'Receivers got different alert messages' }
     Verify-Stored $request $accepted $firstAlert
     'PASS: two receivers got identical ALERT messages containing the exact stored row'
-    Assert-Error (Exchange $admin @{ version = 1; type = 'GET_CLIENTS' }) 'INVALID_MESSAGE'
+    Assert-Error (Exchange $admin @{ version = 1; type = 'LOGIN_RESULT'; success = $true }) 'INVALID_MESSAGE'
 
     $first.Client.Dispose()
     $request = New-Request

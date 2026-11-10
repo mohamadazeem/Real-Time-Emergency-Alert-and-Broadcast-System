@@ -58,9 +58,8 @@ try {
     'PASS: correct credentials authenticate the same connection'
 
     $reply = Exchange $admin @{ version = 1; type = 'GET_CLIENTS' }
-    Assert-Error $reply 'INVALID_MESSAGE'
-    if ($reply.message -notmatch 'not implemented') { throw 'Expected feature availability explanation' }
-    'PASS: authenticated request reaches feature availability check'
+    if ($reply.type -cne 'CLIENT_LIST') { throw 'Expected CLIENT_LIST for an authenticated admin' }
+    'PASS: authenticated admin can query the live client list'
 
     $stranger = Open-Connection
     Assert-Error (Exchange $stranger @{ version = 1; type = 'GET_CLIENTS' }) 'UNAUTHORIZED'
@@ -69,7 +68,8 @@ try {
 
     $id = [guid]::NewGuid().ToString()
     Assert-Error (Exchange $admin @{ version = 1; type = 'REGISTER_CLIENT'; clientId = $id; name = 'Disallowed receiver' }) 'INVALID_MESSAGE'
-    Assert-Error (Exchange $admin @{ version = 1; type = 'GET_CLIENTS' }) 'INVALID_MESSAGE'
+    $reply = Exchange $admin @{ version = 1; type = 'GET_CLIENTS' }
+    if ($reply.type -cne 'CLIENT_LIST') { throw 'Admin role changed after rejected registration' }
     'PASS: admin cannot change to receiver and remains authenticated'
 
     $receiver = Open-Connection

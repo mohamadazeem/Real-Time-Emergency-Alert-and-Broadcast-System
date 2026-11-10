@@ -1,20 +1,30 @@
 package edu.ec5205.alert.admin.ui;
 
+import edu.ec5205.alert.admin.network.AdminConnection;
+import edu.ec5205.alert.admin.network.MessageListener;
 import edu.ec5205.alert.admin.service.AdminAuthService;
 import edu.ec5205.alert.common.Messages.ClientInfo;
+import edu.ec5205.alert.common.ProtocolMessage;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
+import javax.swing.event.AncestorEvent;
+import javax.swing.event.AncestorListener;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.time.Duration;
 import java.util.List;
 
 /**
- * Panel displaying connected receiver clients or current server milestone availability.
+ * Panel displaying connected receiver clients.
+ * <p>
+ * Supports both a manual "Refresh" button (GET_CLIENTS request-response)
+ * and automatic live updates from unsolicited CLIENT_LIST push messages
+ * sent by the server when receivers connect or disconnect.
  */
 public final class ConnectedClientsPanel extends JPanel {
 
+    private final AdminConnection connection;
     private final AdminAuthService authService;
     private final DefaultTableModel tableModel = new DefaultTableModel(new String[]{"Client ID", "Device Name"}, 0) {
         @Override public boolean isCellEditable(int row, int column) { return false; }
@@ -24,9 +34,28 @@ public final class ConnectedClientsPanel extends JPanel {
     private final JButton refreshButton = new JButton("Refresh Client List");
     private final JProgressBar progressBar = new JProgressBar();
 
-    public ConnectedClientsPanel(AdminAuthService authService) {
+    /** Listener for unsolicited CLIENT_LIST push messages from the server. */
+    private final MessageListener clientListListener = new MessageListener() {
+        @Override
+        public void onMessage(ProtocolMessage message) {
+            if (!(message instanceof edu.ec5205.alert.common.Messages.ClientList list)) return;
+            SwingUtilities.invokeLater(() -> {
+                tableModel.setRowCount(0);
+                for (ClientInfo c : list.clients()) {
+                    tableModel.addRow(new Object[]{c.clientId(), c.name()});
+                }
+                statusLabel.setForeground(new Color(20, 120, 30));
+                statusLabel.setText("Live update: " + list.clients().size() + " active receiver(s).");
+            });
+        }
+    };
+
+    public ConnectedClientsPanel(AdminConnection connection, AdminAuthService authService) {
+        this.connection  = connection;
         this.authService = authService;
         initUI();
+        connection.addListener(clientListListener);
+        registerCleanupOnRemoval();
     }
 
     private void initUI() {
@@ -35,7 +64,8 @@ public final class ConnectedClientsPanel extends JPanel {
 
         // Header info
         JPanel topPanel = new JPanel(new BorderLayout(10, 10));
-        JLabel infoLabel = new JLabel("<html><b>Connected Receivers:</b> Shows active client endpoints registered on the server.</html>");
+        JLabel infoLabel = new JLabel("<html><b>Connected Receivers:</b> Shows active client endpoints registered on the server. "
+                + "Updates automatically when receivers connect or disconnect.</html>");
         topPanel.add(infoLabel, BorderLayout.NORTH);
 
         progressBar.setIndeterminate(true);
@@ -91,5 +121,23 @@ public final class ConnectedClientsPanel extends JPanel {
         };
         worker.execute();
     }
+
+    private void registerCleanupOnRemoval() {
+        addAncestorListener(new AncestorListener() {
+            @Override public void ancestorAdded(AncestorEvent e) {}
+            @Override public void ancestorMoved(AncestorEvent e) {}
+
+            @Override
+            public void ancestorRemoved(AncestorEvent e) {
+                connection.removeListener(clientListListener);
+            }
+        });
+    }
+
+    /** Public dispose hook for explicit cleanup. */
+    public void dispose() {
+        connection.removeListener(clientListListener);
+    }
 }
+
 

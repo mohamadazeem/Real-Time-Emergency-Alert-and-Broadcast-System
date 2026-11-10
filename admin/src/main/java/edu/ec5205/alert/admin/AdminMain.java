@@ -122,21 +122,23 @@ public final class AdminMain {
             System.out.println("---------------------------------------------------------------");
             System.out.println(" [1] Test GET_CLIENTS (Query connected receiver clients)");
             System.out.println(" [2] Test GET_HISTORY (Query recent alert history)");
-            System.out.println(" [3] View Connection & Session Status");
-            System.out.println(" [4] Disconnect and Exit");
-            System.out.print(" Select an option [1-4]: ");
+            System.out.println(" [3] Test GET_ACKS (Query alert acknowledgements)");
+            System.out.println(" [4] View Connection & Session Status");
+            System.out.println(" [5] Disconnect and Exit");
+            System.out.print(" Select an option [1-5]: ");
 
             String choice = scanner.nextLine().trim();
             switch (choice) {
                 case "1" -> testGetClients(authService);
                 case "2" -> testGetHistory(scanner, authService);
-                case "3" -> showStatus(authService, connection);
-                case "4" -> {
+                case "3" -> testGetAcks(scanner, authService);
+                case "4" -> showStatus(authService, connection);
+                case "5" -> {
                     System.out.println("Disconnecting from server...");
                     connection.close();
                     running = false;
                 }
-                default -> System.out.println("Invalid selection. Please choose 1, 2, 3, or 4.");
+                default -> System.out.println("Invalid selection. Please choose 1, 2, 3, 4, or 5.");
             }
         }
     }
@@ -185,6 +187,34 @@ public final class AdminMain {
             System.err.println("[!] Request timed out waiting for server response.");
         } catch (Exception e) {
             System.err.println("[!] GET_HISTORY failed: " + e.getMessage());
+        }
+    }
+
+    private static void testGetAcks(Scanner scanner, AdminAuthService authService) {
+        System.out.print("Enter alert UUID: ");
+        String alertId = scanner.nextLine().trim();
+        if (alertId.isEmpty()) {
+            System.out.println("Alert ID cannot be empty.");
+            return;
+        }
+
+        System.out.println("\nSending GET_ACKS (alertId=" + alertId + ") request to server...");
+        try {
+            List<Messages.Acknowledgement> acks = authService.requestAcknowledgements(alertId, Duration.ofSeconds(5));
+            System.out.println("[+] Received ACK_LIST with " + acks.size() + " acknowledgement(s):");
+            if (acks.isEmpty()) {
+                System.out.println("    (No clients have acknowledged this alert yet)");
+            } else {
+                for (Messages.Acknowledgement ack : acks) {
+                    System.out.println("    - Client: " + ack.clientId() + " | Acknowledged At: " + ack.acknowledgedAt());
+                }
+            }
+        } catch (ProtocolException e) {
+            System.out.println("[*] Server response: " + e.getMessage());
+        } catch (TimeoutException e) {
+            System.err.println("[!] Request timed out waiting for server response.");
+        } catch (Exception e) {
+            System.err.println("[!] GET_ACKS failed: " + e.getMessage());
         }
     }
 

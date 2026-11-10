@@ -129,6 +129,32 @@ public final class AdminAuthService {
     }
 
     /**
+     * Post-login query: requests acknowledgements for a specific alert by its ID.
+     */
+    public List<Messages.Acknowledgement> requestAcknowledgements(String alertId, Duration timeout)
+            throws IOException, TimeoutException, InterruptedException, ProtocolException {
+
+        if (!isAuthenticated()) {
+            throw new IllegalStateException("Authentication required: Send LOGIN first.");
+        }
+        Objects.requireNonNull(alertId, "alertId cannot be null");
+
+        ProtocolMessage response = connection.sendAndAwait(
+                new Messages.GetAcks(alertId),
+                msg -> msg.type() == MessageType.ACK_LIST || msg.type() == MessageType.ERROR,
+                timeout
+        );
+
+        if (response instanceof Messages.AckList ackList) {
+            return ackList.acknowledgements();
+        } else if (response instanceof Messages.ErrorMessage error) {
+            throw new ProtocolException("Server returned error (" + error.code() + "): " + error.message());
+        } else {
+            throw new ProtocolException("Unexpected response type: " + response.type());
+        }
+    }
+
+    /**
      * Post-login connectivity test: requests recent alert history.
      */
     public List<Messages.Alert> requestHistory(int limit, Duration timeout)

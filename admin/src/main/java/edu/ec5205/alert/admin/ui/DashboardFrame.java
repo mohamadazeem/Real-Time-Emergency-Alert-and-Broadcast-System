@@ -60,8 +60,8 @@ public final class DashboardFrame extends JFrame {
         tabbedPane.setBorder(new EmptyBorder(5, 10, 10, 10));
 
         tabbedPane.addTab("Create Alert", new CreateAlertPanel(alertService));
-        tabbedPane.addTab("Connected Clients", new ConnectedClientsPanel(authService));
-        tabbedPane.addTab("Alert Monitoring", new AlertMonitoringPanel());
+        tabbedPane.addTab("Connected Clients", new ConnectedClientsPanel(connection, authService));
+        tabbedPane.addTab("Alert Monitoring", new AlertMonitoringPanel(connection, authService));
         tabbedPane.addTab("Alert History", new AlertHistoryPanel(authService));
 
         rootPanel.add(tabbedPane, BorderLayout.CENTER);

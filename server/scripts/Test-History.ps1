@@ -7,14 +7,16 @@ param(
     [switch]$RequireEmpty
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'scripts/Project-Paths.ps1')
 if ([string]::IsNullOrWhiteSpace($Username) -or [string]::IsNullOrWhiteSpace($Password)) {
     throw 'Set the same placeholder credential variables as the local server.'
 }
-if ([string]::IsNullOrWhiteSpace($DatabasePath)) { $DatabasePath = 'data/emergency-alerts.db' }
+if ([string]::IsNullOrWhiteSpace($DatabasePath)) { $DatabasePath = 'runtime/data/emergency-alerts.db' }
+$DatabasePath = Resolve-ConfiguredRuntimePath $DatabasePath
 if (-not (Test-Path -LiteralPath $DatabasePath -PathType Leaf)) { throw 'Supply the running local server database path.' }
 $connections = [System.Collections.Generic.List[object]]::new()
 $createdIds = [System.Collections.Generic.List[string]]::new()
-$framePath = Join-Path ([System.IO.Path]::GetTempPath()) ('history-frame-' + [guid]::NewGuid() + '.json')
+$framePath = Join-Path (New-RuntimeDirectory 'evidence/legacy-checks') ('history-frame-' + [guid]::NewGuid() + '.json')
 function Open-Connection {
     $client = [System.Net.Sockets.TcpClient]::new()
     try {

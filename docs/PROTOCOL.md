@@ -7,7 +7,8 @@ JSON encoders escape newlines inside text. Buffer partial reads and process mult
 Maximum frame size: 65536 bytes excluding LF; enforce while reading before unbounded allocation.
 Default port: 5050, configurable. One serialized writer per connection.
 Include version: 1 and type in every object. Validate types, required fields and allowed enum values.
-The current starter does not yet implement this protocol.
+The common codec and server implement this protocol. Application workflow coverage and
+remaining interface gaps are documented in INTEGRATION_REVIEW.md.
 
 ## Connection state
 An admin sends LOGIN; only successfully authenticated sessions may CREATE_ALERT or GET_CLIENTS.

@@ -1,0 +1,86 @@
+HISTORICAL EVIDENCE: the output below retains its original recorded paths.
+Runtime files have since moved: root logs -> runtime/logs; integration-evidence ->
+runtime/evidence (nested logs -> runtime/logs/evidence); demo-dist -> runtime/dist.
+Use README.md and docs/RUNTIME_CLEANUP.md for current commands. Raw output is unchanged.
+
+Integration evidence - 2026-11-11 Asia/Colombo
+Reviewed merge: fb7c4fafc1a882a099ad8cf4fb111615979b4075
+Final branch: integration-review (uncommitted changes)
+Configured runtime: Temurin 17.0.21+9; Maven 3.9.16; Windows 11 amd64
+
+FINAL MAVEN BUILD
+[INFO] 
+[INFO] --- jar:3.5.0:jar (default-jar) @ client ---
+[INFO] Building jar: C:\Users\ASUS\Desktop\Network-project\Real-Time-Emergency-Alert-and-Broadcast-System\client\target\client-0.1.0-SNAPSHOT.jar
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for emergency-alert-system 0.1.0-SNAPSHOT:
+[INFO] 
+[INFO] emergency-alert-system ............................. SUCCESS [  0.265 s]
+[INFO] common ............................................. SUCCESS [  5.956 s]
+[INFO] server ............................................. SUCCESS [ 17.690 s]
+[INFO] admin .............................................. SUCCESS [  9.255 s]
+[INFO] client ............................................. SUCCESS [  2.850 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  36.163 s
+[INFO] Finished at: 2026-11-11T16:46:07+05:30
+[INFO] ------------------------------------------------------------------------
+
+FINAL SUREFIRE SUITE COUNTS
+"Module","Suite","Tests","Failures","Errors","Skipped"
+"common","edu.ec5205.alert.common.JsonMessageCodecTest","61","0","0","0"
+"server","edu.ec5205.alert.server.AdminCredentialsTest","8","0","0","0"
+"server","edu.ec5205.alert.server.ClientListTest","16","0","0","0"
+"server","edu.ec5205.alert.server.ClientRegistrationTest","22","0","0","0"
+"server","edu.ec5205.alert.server.OutgoingDeliveryTest","7","0","0","0"
+"server","edu.ec5205.alert.server.ServerLimitsTest","3","0","0","0"
+"server","edu.ec5205.alert.server.storage.AcknowledgementQueryTest","23","0","0","0"
+"server","edu.ec5205.alert.server.storage.AcknowledgementTest","14","0","0","0"
+"server","edu.ec5205.alert.server.storage.AlertCreationTest","23","0","0","0"
+"server","edu.ec5205.alert.server.storage.HistoryTest","26","0","0","0"
+"server","edu.ec5205.alert.server.storage.StorageRepositoryTest","14","0","0","0"
+"server","edu.ec5205.alert.server.storage.StorageStartupTest","4","0","0","0"
+"admin","edu.ec5205.alert.admin.AckMonitoringTest","10","0","0","0"
+"admin","edu.ec5205.alert.admin.AdminAuthServiceTest","8","0","0","0"
+"admin","edu.ec5205.alert.admin.AdminConnectionTest","6","0","0","0"
+"admin","edu.ec5205.alert.admin.AdminMainTest","1","0","0","0"
+"admin","edu.ec5205.alert.admin.AdminSessionTest","4","0","0","0"
+"admin","edu.ec5205.alert.admin.AdminUITest","3","0","0","0"
+"admin","edu.ec5205.alert.admin.AlertServiceTest","12","0","0","0"
+"admin","edu.ec5205.alert.admin.ui.PanelLiveUpdatesTest","3","0","0","0"
+"client","edu.ec5205.alert.client.ConsoleClientIntegrationTest","3","0","0","0"
+"client","edu.ec5205.alert.client.service.AlertHistoryManagerTest","4","0","0","0"
+"client","edu.ec5205.alert.client.storage.ClientIdentityStorageTest","4","0","0","0"
+
+FINAL REAL-APPLICATION HARNESS (BUILD CLASSES)
+Evidence directory: C:\Users\ASUS\Desktop\Network-project\Real-Time-Emergency-Alert-and-Broadcast-System\integration-evidence\run-13509348568523462273
+PASS invalid/valid real admin service login
+PASS two receivers listed; duplicate identity and unauthorized connection rejected
+PASS identical broadcast; two harness ACKs; live status; duplicate ACK idempotence; queries
+PASS disconnect isolation; retained identity; explicit history retrieval and manager deduplication
+PASS fresh admin reconnect recovers stored acknowledgement state
+PASS actual ClientMain process registers and displays an alert (console only)
+PASS normal restart persistence; shutdown closes connections and releases port
+LOCAL_LATENCY samples=23 min_ms=8.924 median_ms=13.860 p95_ms=28.786 max_ms=29.031 mean_ms=15.162
+ALL REAL-APPLICATION INTEGRATION CHECKS PASSED; ACKs were harness-generated. GUI/LAN not established by this harness.
+
+FINAL REAL-APPLICATION HARNESS (PACKAGED RUNTIME JARS)
+Evidence directory: C:\Users\ASUS\Desktop\Network-project\Real-Time-Emergency-Alert-and-Broadcast-System\integration-evidence\run-10485581255333376569
+PASS invalid/valid real admin service login
+PASS two receivers listed; duplicate identity and unauthorized connection rejected
+PASS identical broadcast; two harness ACKs; live status; duplicate ACK idempotence; queries
+PASS disconnect isolation; retained identity; explicit history retrieval and manager deduplication
+PASS fresh admin reconnect recovers stored acknowledgement state
+PASS actual ClientMain process registers and displays an alert (console only)
+PASS normal restart persistence; shutdown closes connections and releases port
+LOCAL_LATENCY samples=23 min_ms=8.508 median_ms=15.503 p95_ms=34.412 max_ms=34.781 mean_ms=16.261
+ALL REAL-APPLICATION INTEGRATION CHECKS PASSED; ACKs were harness-generated. GUI/LAN not established by this harness.
+
+GUI OBSERVATIONS
+Real AdminMain: successful login; broadcast acceptance with server ID; roster of two receivers; two stored ACK rows; one persisted history row.
+GUI ACKs were generated automatically by the disposable fixture receivers, not humans.
+Visual live ACK push, invalid-login feedback, reconnection and stalled-network responsiveness were not independently checked.
+Receiver GUI and user ACK controls are absent. Separate-laptop LAN checks were not performed.
+GUI fixture stopped normally with exit 0; test windows disappeared.
+All server test shutdown/restart and port-rebind checks passed.

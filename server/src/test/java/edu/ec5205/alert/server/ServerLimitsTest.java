@@ -13,6 +13,15 @@ import static org.junit.jupiter.api.Assertions.*;
 @Timeout(10)
 class ServerLimitsTest {
     @Test
+    void serverPortIsConfigurableAndValidated() {
+        assertEquals(5050, ServerMain.portFromEnvironment(Map.of()));
+        assertEquals(15050, ServerMain.portFromEnvironment(Map.of("EMERGENCY_PORT", "15050")));
+        for (String value : List.of("0", "65536", "", "abc")) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> ServerMain.portFromEnvironment(Map.of("EMERGENCY_PORT", value)));
+        }
+    }
+    @Test
     void defaultsAccommodateAdminAndTwoDemoReceiversAndConfigurationIsBounded() {
         assertEquals(new ServerLimits(8, 32), ServerLimits.fromEnvironment(Map.of()));
         assertEquals(new ServerLimits(3, 2), ServerLimits.fromEnvironment(Map.of(

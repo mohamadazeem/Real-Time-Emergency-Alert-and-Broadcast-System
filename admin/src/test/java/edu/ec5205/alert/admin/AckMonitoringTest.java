@@ -35,51 +35,6 @@ class AckMonitoringTest {
 
     private final JsonMessageCodec codec = new JsonMessageCodec();
 
-    // ─── Helper: establish a logged-in session against a mini test server ──────
-
-    /**
-     * Shared test-server bootstrap: accepts one connection, performs a LOGIN
-     * handshake, then hands control to the given ServerAction.
-     */
-    @FunctionalInterface
-    interface ServerAction {
-        void run(InputStream in, OutputStream out) throws Exception;
-    }
-
-    private AdminAuthService loginAndGetService(int port, ServerAction serverAction, int listenPort) throws Exception {
-        Thread server = new Thread(() -> {
-            try (ServerSocket ss = new ServerSocket(listenPort)) {
-                try (Socket s = ss.accept()) {
-                    InputStream in  = s.getInputStream();
-                    OutputStream out = s.getOutputStream();
-
-                    // Handle LOGIN
-                    ProtocolMessage loginMsg = codec.read(in);
-                    if (loginMsg instanceof Messages.Login login && "admin".equals(login.username())) {
-                        codec.write(out, new Messages.LoginResult(true));
-                    } else {
-                        codec.write(out, new Messages.LoginResult(false));
-                        return;
-                    }
-
-                    serverAction.run(in, out);
-                }
-            } catch (Exception ignored) {}
-        });
-        server.setDaemon(true);
-        server.start();
-
-        Thread.sleep(50); // let server start
-
-        AdminConnection conn = new AdminConnection("localhost", listenPort);
-        conn.connect();
-        AdminAuthService svc = new AdminAuthService(conn);
-        svc.login("admin", "anypassword", Duration.ofSeconds(3));
-        return svc;
-    }
-
-    // ─── 1. GET_ACKS message carries the correct alertId field ───────────────
-
     @Test
     @DisplayName("requestAcknowledgements sends GET_ACKS with correct alertId")
     void getAcksSendsCorrectAlertId() throws Exception {
@@ -400,7 +355,6 @@ class AckMonitoringTest {
 
             Thread server = new Thread(() -> {
                 try (Socket s = ss.accept()) {
-                    InputStream in  = s.getInputStream();
                     OutputStream out = s.getOutputStream();
                     // Wait until client has registered listener, then push first message
                     listenerRegistered.await(3, TimeUnit.SECONDS);

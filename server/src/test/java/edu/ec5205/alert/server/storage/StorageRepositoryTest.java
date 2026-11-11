@@ -231,7 +231,8 @@ class StorageRepositoryTest {
 
     @Test
     void pathConfigurationHasLocalDefaultAndRejectsBlankOrDirectory() throws Exception {
-        assertEquals(Path.of("data/emergency-alerts.db"), SqliteDatabase.pathFromEnvironment(Map.of()));
+        assertEquals(Path.of("runtime/data/emergency-alerts.db"), SqliteDatabase.pathFromEnvironment(Map.of()));
+        assertEquals(Path.of("custom/retained.db"), SqliteDatabase.pathFromEnvironment(Map.of("EMERGENCY_DB_PATH", "custom/retained.db")));
         assertEquals(path, SqliteDatabase.pathFromEnvironment(Map.of("EMERGENCY_DB_PATH", path.toString())));
         assertThrows(IllegalArgumentException.class, () -> SqliteDatabase.pathFromEnvironment(Map.of("EMERGENCY_DB_PATH", "  ")));
         assertThrows(java.io.IOException.class, () -> new SqliteDatabase(directory));

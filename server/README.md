@@ -1,9 +1,15 @@
 # JSON registration, broadcast, history, acknowledgements, and live client lists
 
+Generated data now defaults to runtime/data and the prepared classpath is runtime/dist/lib/*.
+Use the root README's Build.ps1 / Prepare-Demo.ps1 / Start-App.ps1 commands for logging
+under runtime/logs and repository-root path resolution from any caller directory.
+
 The server uses the existing shared JsonMessageCodec and Login / LoginResult /
 RegisterClient / Registered models. No protocol fields, message shapes, or error codes
 changed. Java 17 and port 5050 are preserved. Connection capacity is now configurable
 and defaults to eight active connections with immediate rejection at capacity; see below.
+The integration-review branch also supports `EMERGENCY_PORT` (1-65535, default 5050).
+See [the integration review](../docs/INTEGRATION_REVIEW.md) for current packaging and LAN commands.
 
 SQLite storage is initialized before the listener starts. Authenticated CREATE_ALERT
 requests persist through AlertRepository and are queued for registered receivers before
@@ -438,7 +444,7 @@ Non-integer, blank, or out-of-range configured limits fail startup before bindin
 ## SQLite schema and repositories
 
 SQLite stores the data in one local file. Set EMERGENCY_DB_PATH to choose that file;
-the default is data/emergency-alerts.db relative to the server's working directory.
+the default is runtime/data/emergency-alerts.db relative to the server's working directory.
 Relative paths are normalized to an absolute path and missing parent directories are
 created. An explicitly blank value is rejected. Keep the file on local disk.
 
@@ -516,7 +522,7 @@ Set-Location 'C:\Users\ASUS\Desktop\Network Project\Real-Time-Emergency-Alert-an
 $env:EMERGENCY_ADMIN_USERNAME = 'classroom-admin-placeholder'
 $env:EMERGENCY_ADMIN_PASSWORD = 'classroom-password-placeholder'
 # Optional: omit this variable to use the same local default.
-$env:EMERGENCY_DB_PATH = 'data\emergency-alerts.db'
+$env:EMERGENCY_DB_PATH = 'runtime\data\emergency-alerts.db'
 $env:EMERGENCY_MAX_CONNECTIONS = '8'
 $env:EMERGENCY_OUTGOING_QUEUE_CAPACITY = '32'
 
@@ -544,12 +550,12 @@ $env:EMERGENCY_ADMIN_USERNAME = 'classroom-admin-placeholder'
 $env:EMERGENCY_ADMIN_PASSWORD = 'classroom-password-placeholder'
 & .\server\scripts\Test-AdminAuthentication.ps1
 & .\server\scripts\Test-Registration.ps1
-& .\server\scripts\Test-AlertCreation.ps1 -DatabasePath 'data\emergency-alerts.db'
-& .\server\scripts\Test-Broadcast.ps1 -DatabasePath 'data\emergency-alerts.db'
-& .\server\scripts\Test-Acknowledgement.ps1 -DatabasePath 'data\emergency-alerts.db'
-& .\server\scripts\Test-History.ps1 -DatabasePath 'data\emergency-alerts.db'
-& .\server\scripts\Test-GetAcks.ps1 -DatabasePath 'data\emergency-alerts.db'
-& .\server\scripts\Test-GetClients.ps1 -DatabasePath 'data\emergency-alerts.db'
+& .\server\scripts\Test-AlertCreation.ps1 -DatabasePath 'runtime\data\emergency-alerts.db'
+& .\server\scripts\Test-Broadcast.ps1 -DatabasePath 'runtime\data\emergency-alerts.db'
+& .\server\scripts\Test-Acknowledgement.ps1 -DatabasePath 'runtime\data\emergency-alerts.db'
+& .\server\scripts\Test-History.ps1 -DatabasePath 'runtime\data\emergency-alerts.db'
+& .\server\scripts\Test-GetAcks.ps1 -DatabasePath 'runtime\data\emergency-alerts.db'
+& .\server\scripts\Test-GetClients.ps1 -DatabasePath 'runtime\data\emergency-alerts.db'
 ```
 
 Separate PowerShell windows do not automatically share environment changes.
@@ -565,7 +571,7 @@ correlation, exact ALERT_ACCEPTED fields, and a saved row reopened through Alert
 in a separate JVM. It prints five PASS messages and the created alert ID. VerifyAlert.java
 is a source-file test helper, not production server code. This live check intentionally
 adds one test alert to the selected database; use a disposable EMERGENCY_DB_PATH such as
-data/alert-creation-demo.db in window 1 and pass the same path in window 2. No history
+runtime/data/alert-creation-demo.db in window 1 and pass the same path in window 2. No history
 network endpoint is added for verification. Credentials/LOGIN JSON are never printed.
 
 Test-Broadcast.ps1 opens two receivers and an admin, rejects unauthorized submissions,
@@ -573,12 +579,12 @@ verifies both receivers get identical ALERT frames, and reopens the database in 
 separate JVM to compare the full delivered Alert against its stored row. It then closes
 one receiver, creates a second alert, and verifies the healthy receiver still gets it.
 The script intentionally inserts two test alerts. Use a disposable database such as
-data/broadcast-demo.db in window 1 and pass that same path to the script in window 2.
+runtime/data/broadcast-demo.db in window 1 and pass that same path to the script in window 2.
 The earlier creation check still works, but a registered test receiver will now have an
 ALERT waiting in its incoming stream after a successful creation.
 
 Test-Acknowledgement.ps1 uses unique UUIDs each run and closes every socket in finally.
-Use a disposable EMERGENCY_DB_PATH such as data/acknowledgement-demo.db in window 1,
+Use a disposable EMERGENCY_DB_PATH such as runtime/data/acknowledgement-demo.db in window 1,
 and pass the same path in window 2. Each run intentionally saves one alert, one client,
 and one acknowledgement. The script checks receiver-only authorization, unknown alerts,
 delivery without automatic ACK, exact ACK_RESULT/ACK_STATUS fields, connection-bound
@@ -591,12 +597,12 @@ Storage failures and truly concurrent duplicates are exercised by the automated 
 
 Test-History.ps1 runs against a local server using the same placeholder credentials and
 database path. Start window 1 with a disposable EMERGENCY_DB_PATH such as
-data/history-demo.db, then use this in window 2:
+runtime/data/history-demo.db, then use this in window 2:
 
 ```powershell
-& .\server\scripts\Test-History.ps1 -DatabasePath 'data\history-demo.db' -RequireEmpty
+& .\server\scripts\Test-History.ps1 -DatabasePath 'runtime\data\history-demo.db' -RequireEmpty
 # Repeat against the same database after the first run (omit -RequireEmpty):
-& .\server\scripts\Test-History.ps1 -DatabasePath 'data\history-demo.db'
+& .\server\scripts\Test-History.ps1 -DatabasePath 'runtime\data\history-demo.db'
 ```
 
 The optional -RequireEmpty verifies the initial empty-array response and requires a fresh
@@ -613,11 +619,11 @@ Automated tests additionally cover SQL failures, timestamp ties, 100-of-101 sele
 JSON escaping, and exact/one-byte-over frame boundaries.
 
 Test-GetAcks.ps1 runs against a local server with the same credentials and database path.
-Use a disposable EMERGENCY_DB_PATH such as data/get-acks-demo.db in window 1, then run
+Use a disposable EMERGENCY_DB_PATH such as runtime/data/get-acks-demo.db in window 1, then run
 this from the repository root in window 2:
 
 ```powershell
-& .\server\scripts\Test-GetAcks.ps1 -DatabasePath 'data\get-acks-demo.db'
+& .\server\scripts\Test-GetAcks.ps1 -DatabasePath 'runtime\data\get-acks-demo.db'
 # Run the same command again to repeat with fresh IDs.
 ```
 
@@ -632,10 +638,10 @@ JSON are never printed. Automated tests cover database failures and frame-size b
 
 Test-GetClients.ps1 checks the exact query and push frames with two authenticated admins.
 Use an isolated local test server without other connected receivers and a disposable
-EMERGENCY_DB_PATH such as data/get-clients-demo.db in window 1. In window 2, run:
+EMERGENCY_DB_PATH such as runtime/data/get-clients-demo.db in window 1. In window 2, run:
 
 ```powershell
-& .\server\scripts\Test-GetClients.ps1 -DatabasePath 'data\get-clients-demo.db'
+& .\server\scripts\Test-GetClients.ps1 -DatabasePath 'runtime\data\get-clients-demo.db'
 # Repeat with the same command; all receiver IDs are fresh each run.
 ```
 

@@ -31,7 +31,6 @@ import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.file.Path;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
@@ -116,139 +115,166 @@ class ConsoleClientIntegrationTest {
 
         assertNotEquals(id1.clientId(), id2.clientId(), "Two independent clients must have distinct UUIDs");
 
-        // Client 1 setup
-        ClientNetworkManager client1 = new ClientNetworkManager();
-        AlertHistoryManager history1 = new AlertHistoryManager();
-        CountDownLatch reg1Latch = new CountDownLatch(1);
-        CountDownLatch alert1Latch = new CountDownLatch(1);
-        CountDownLatch ack1Latch = new CountDownLatch(1);
+        try (ClientNetworkManager client1 = new ClientNetworkManager();
+             ClientNetworkManager client2 = new ClientNetworkManager()) {
+            // Client 1 setup
+            AlertHistoryManager history1 = new AlertHistoryManager();
+            CountDownLatch reg1Latch = new CountDownLatch(1);
+            CountDownLatch alert1Latch = new CountDownLatch(1);
+            CountDownLatch ack1Latch = new CountDownLatch(1);
 
-        client1.addListener(new ClientListener() {
-            @Override
-            public void onRegistered(Registered reg) {
-                reg1Latch.countDown();
-            }
-
-            @Override
-            public void onAlertReceived(Alert alert) {
-                if (history1.addAlert(alert)) {
-                    alert1Latch.countDown();
+            client1.addListener(new ClientListener() {
+                @Override
+                public void onRegistered(Registered reg) {
+                    reg1Latch.countDown();
                 }
-            }
 
-            @Override
-            public void onAckResult(AckResult ackResult) {
-                history1.updateAckStatus(ackResult.alertId(), AckStatusState.ACKNOWLEDGED);
-                ack1Latch.countDown();
-            }
-        });
-
-        // Client 2 setup
-        ClientNetworkManager client2 = new ClientNetworkManager();
-        AlertHistoryManager history2 = new AlertHistoryManager();
-        CountDownLatch reg2Latch = new CountDownLatch(1);
-        CountDownLatch alert2Latch = new CountDownLatch(1);
-        CountDownLatch ack2Latch = new CountDownLatch(1);
-
-        client2.addListener(new ClientListener() {
-            @Override
-            public void onRegistered(Registered reg) {
-                reg2Latch.countDown();
-            }
-
-            @Override
-            public void onAlertReceived(Alert alert) {
-                if (history2.addAlert(alert)) {
-                    alert2Latch.countDown();
+                @Override
+                public void onAlertReceived(Alert alert) {
+                    if (history1.addAlert(alert)) {
+                        alert1Latch.countDown();
+                    }
                 }
+
+                @Override
+                public void onAckResult(AckResult ackResult) {
+                    history1.updateAckStatus(ackResult.alertId(), AckStatusState.ACKNOWLEDGED);
+                    ack1Latch.countDown();
+                }
+            });
+
+            // Client 2 setup
+            AlertHistoryManager history2 = new AlertHistoryManager();
+            CountDownLatch reg2Latch = new CountDownLatch(1);
+            CountDownLatch alert2Latch = new CountDownLatch(1);
+            CountDownLatch ack2Latch = new CountDownLatch(1);
+
+            client2.addListener(new ClientListener() {
+                @Override
+                public void onRegistered(Registered reg) {
+                    reg2Latch.countDown();
+                }
+
+                @Override
+                public void onAlertReceived(Alert alert) {
+                    if (history2.addAlert(alert)) {
+                        alert2Latch.countDown();
+                    }
+                }
+
+                @Override
+                public void onAckResult(AckResult ackResult) {
+                    history2.updateAckStatus(ackResult.alertId(), AckStatusState.ACKNOWLEDGED);
+                    ack2Latch.countDown();
+                }
+            });
+
+            // Connect both clients
+            client1.connect("127.0.0.1", serverPort, id1);
+            client2.connect("127.0.0.1", serverPort, id2);
+
+            assertTrue(reg1Latch.await(5, TimeUnit.SECONDS), "Client 1 registration must succeed");
+            assertTrue(reg2Latch.await(5, TimeUnit.SECONDS), "Client 2 registration must succeed");
+            assertEquals(ConnectionState.CONNECTED, client1.getState());
+            assertEquals(ConnectionState.CONNECTED, client2.getState());
+
+            // Verify server received both unique registrations
+            assertEquals(2, serverReceivedRegistrations.size());
+            Set<String> registeredIds = new HashSet<>();
+            for (RegisterClient reg : serverReceivedRegistrations) {
+                registeredIds.add(reg.clientId());
+            }
+            assertTrue(registeredIds.contains(id1.clientId()));
+            assertTrue(registeredIds.contains(id2.clientId()));
+
+            // Broadcast alert from server to all connected client sockets
+            String alertId = UUID.randomUUID().toString();
+            Alert broadcastAlert = new Alert(alertId, "2026-11-11T10:30:00Z",
+                    "Flood Warning", "Heavy rainfall expected.", Category.WEATHER, Priority.CRITICAL);
+            AlertMessage alertMessage = new AlertMessage(broadcastAlert);
+
+            for (Socket s : serverAcceptedSockets) {
+                codec.write(s.getOutputStream(), alertMessage);
             }
 
-            @Override
-            public void onAckResult(AckResult ackResult) {
-                history2.updateAckStatus(ackResult.alertId(), AckStatusState.ACKNOWLEDGED);
-                ack2Latch.countDown();
+            // Verify both clients received the alert
+            assertTrue(alert1Latch.await(5, TimeUnit.SECONDS), "Client 1 must receive the broadcast alert");
+            assertTrue(alert2Latch.await(5, TimeUnit.SECONDS), "Client 2 must receive the broadcast alert");
+
+            assertEquals(1, history1.getAllAlerts().size());
+            assertEquals(1, history2.getAllAlerts().size());
+
+            ReceivedAlert r1 = history1.getAlert(alertId).orElseThrow();
+            ReceivedAlert r2 = history2.getAlert(alertId).orElseThrow();
+
+            assertEquals("Flood Warning", r1.title());
+            assertEquals("Flood Warning", r2.title());
+            assertEquals(Priority.CRITICAL, r1.priority());
+            assertEquals(Priority.CRITICAL, r2.priority());
+            assertEquals(Category.WEATHER, r1.category());
+            assertEquals(Category.WEATHER, r2.category());
+
+            // Acknowledge from Client 1
+            client1.sendAck(alertId);
+            assertTrue(ack1Latch.await(5, TimeUnit.SECONDS), "Client 1 must receive ACK_RESULT");
+            assertEquals(AckStatusState.ACKNOWLEDGED, history1.getAlert(alertId).orElseThrow().ackStatus());
+            assertEquals(AckStatusState.UNACKNOWLEDGED, history2.getAlert(alertId).orElseThrow().ackStatus());
+
+            // Acknowledge from Client 2 independently
+            client2.sendAck(alertId);
+            assertTrue(ack2Latch.await(5, TimeUnit.SECONDS), "Client 2 must receive ACK_RESULT");
+            assertEquals(AckStatusState.ACKNOWLEDGED, history2.getAlert(alertId).orElseThrow().ackStatus());
+
+            // Verify duplicate alert handling: server sends the same alert again
+            for (Socket s : serverAcceptedSockets) {
+                codec.write(s.getOutputStream(), alertMessage);
             }
-        });
+            Thread.sleep(200); // Give background thread a moment
+            assertEquals(1, history1.getAllAlerts().size(), "Duplicate alert must not increase count");
+            assertEquals(1, history2.getAllAlerts().size(), "Duplicate alert must not increase count");
 
-        // Connect both clients
-        client1.connect("127.0.0.1", serverPort, id1);
-        client2.connect("127.0.0.1", serverPort, id2);
-
-        assertTrue(reg1Latch.await(5, TimeUnit.SECONDS), "Client 1 registration must succeed");
-        assertTrue(reg2Latch.await(5, TimeUnit.SECONDS), "Client 2 registration must succeed");
-        assertEquals(ConnectionState.CONNECTED, client1.getState());
-        assertEquals(ConnectionState.CONNECTED, client2.getState());
-
-        // Verify server received both unique registrations
-        assertEquals(2, serverReceivedRegistrations.size());
-        Set<String> registeredIds = new HashSet<>();
-        for (RegisterClient reg : serverReceivedRegistrations) {
-            registeredIds.add(reg.clientId());
+            // Disconnect cleanly
+            client1.disconnect();
+            client2.disconnect();
+            assertEquals(ConnectionState.DISCONNECTED, client1.getState());
+            assertEquals(ConnectionState.DISCONNECTED, client2.getState());
         }
-        assertTrue(registeredIds.contains(id1.clientId()));
-        assertTrue(registeredIds.contains(id2.clientId()));
-
-        // Broadcast alert from server to all connected client sockets
-        String alertId = UUID.randomUUID().toString();
-        Alert broadcastAlert = new Alert(alertId, "2026-11-11T10:30:00Z",
-                "Flood Warning", "Heavy rainfall expected.", Category.WEATHER, Priority.CRITICAL);
-        AlertMessage alertMessage = new AlertMessage(broadcastAlert);
-
-        for (Socket s : serverAcceptedSockets) {
-            codec.write(s.getOutputStream(), alertMessage);
-        }
-
-        // Verify both clients received the alert
-        assertTrue(alert1Latch.await(5, TimeUnit.SECONDS), "Client 1 must receive the broadcast alert");
-        assertTrue(alert2Latch.await(5, TimeUnit.SECONDS), "Client 2 must receive the broadcast alert");
-
-        assertEquals(1, history1.getAllAlerts().size());
-        assertEquals(1, history2.getAllAlerts().size());
-
-        ReceivedAlert r1 = history1.getAlert(alertId).orElseThrow();
-        ReceivedAlert r2 = history2.getAlert(alertId).orElseThrow();
-
-        assertEquals("Flood Warning", r1.title());
-        assertEquals("Flood Warning", r2.title());
-        assertEquals(Priority.CRITICAL, r1.priority());
-        assertEquals(Priority.CRITICAL, r2.priority());
-        assertEquals(Category.WEATHER, r1.category());
-        assertEquals(Category.WEATHER, r2.category());
-
-        // Acknowledge from Client 1
-        client1.sendAck(alertId);
-        assertTrue(ack1Latch.await(5, TimeUnit.SECONDS), "Client 1 must receive ACK_RESULT");
-        assertEquals(AckStatusState.ACKNOWLEDGED, history1.getAlert(alertId).orElseThrow().ackStatus());
-        assertEquals(AckStatusState.UNACKNOWLEDGED, history2.getAlert(alertId).orElseThrow().ackStatus());
-
-        // Acknowledge from Client 2 independently
-        client2.sendAck(alertId);
-        assertTrue(ack2Latch.await(5, TimeUnit.SECONDS), "Client 2 must receive ACK_RESULT");
-        assertEquals(AckStatusState.ACKNOWLEDGED, history2.getAlert(alertId).orElseThrow().ackStatus());
-
-        // Verify duplicate alert handling: server sends the same alert again
-        for (Socket s : serverAcceptedSockets) {
-            codec.write(s.getOutputStream(), alertMessage);
-        }
-        Thread.sleep(200); // Give background thread a moment
-        assertEquals(1, history1.getAllAlerts().size(), "Duplicate alert must not increase count");
-        assertEquals(1, history2.getAllAlerts().size(), "Duplicate alert must not increase count");
-
-        // Disconnect cleanly
-        client1.disconnect();
-        client2.disconnect();
-        assertEquals(ConnectionState.DISCONNECTED, client1.getState());
-        assertEquals(ConnectionState.DISCONNECTED, client2.getState());
     }
 
     @Test
     void invalidAddressOrPortFailsGracefully() {
-        ClientNetworkManager client = new ClientNetworkManager();
-        ClientIdentity id = new ClientIdentity(UUID.randomUUID().toString(), "Test");
+        try (ClientNetworkManager client = new ClientNetworkManager()) {
+            ClientIdentity id = new ClientIdentity(UUID.randomUUID().toString(), "Test");
 
-        assertThrows(IllegalArgumentException.class, () -> client.connect("127.0.0.1", 99999, id));
-        assertThrows(IOException.class, () -> client.connect("127.0.0.1", 65530, id)); // Non-existent server
-        assertEquals(ConnectionState.DISCONNECTED, client.getState());
+            assertThrows(IllegalArgumentException.class, () -> client.connect("127.0.0.1", 99999, id));
+            assertThrows(IOException.class, () -> client.connect("127.0.0.1", 65530, id)); // Non-existent server
+            assertEquals(ConnectionState.DISCONNECTED, client.getState());
+        }
+    }
+
+    @Test
+    void oversizedServerFrameClosesConnectionInsteadOfReadingItsRemainder() throws Exception {
+        ClientNetworkManager client = new ClientNetworkManager();
+        CountDownLatch registered = new CountDownLatch(1);
+        CountDownLatch lost = new CountDownLatch(1);
+        client.addListener(new ClientListener() {
+            @Override public void onRegistered(Registered message) { registered.countDown(); }
+            @Override public void onStateChanged(ConnectionState oldState, ConnectionState newState) {
+                if (newState == ConnectionState.CONNECTION_LOST) lost.countDown();
+            }
+        });
+        try {
+            client.connect("127.0.0.1", serverPort, new ClientIdentity(UUID.randomUUID().toString(), "Frame test"));
+            assertTrue(registered.await(5, TimeUnit.SECONDS));
+            byte[] oversized = new byte[JsonMessageCodec.MAX_FRAME_BYTES + 1];
+            java.util.Arrays.fill(oversized, (byte) 'x');
+            // Deliberately omit LF: the receiver must close without waiting for more bytes.
+            Socket peer = serverAcceptedSockets.iterator().next();
+            peer.getOutputStream().write(oversized);
+            peer.getOutputStream().flush();
+            assertTrue(lost.await(5, TimeUnit.SECONDS), "Malformed oversized frame must close the receiver socket");
+            assertEquals(ConnectionState.CONNECTION_LOST, client.getState());
+        } finally { client.close(); }
     }
 }
 

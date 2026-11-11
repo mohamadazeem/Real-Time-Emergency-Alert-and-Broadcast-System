@@ -2,7 +2,6 @@ package edu.ec5205.alert.admin.service;
 
 import edu.ec5205.alert.admin.network.AdminConnection;
 import edu.ec5205.alert.common.Category;
-import edu.ec5205.alert.common.MessageType;
 import edu.ec5205.alert.common.Messages;
 import edu.ec5205.alert.common.Priority;
 import edu.ec5205.alert.common.ProtocolException;

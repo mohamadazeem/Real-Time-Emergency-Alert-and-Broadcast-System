@@ -7,15 +7,17 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'scripts/Project-Paths.ps1')
 if ([string]::IsNullOrWhiteSpace($Username) -or [string]::IsNullOrWhiteSpace($Password)) {
     throw 'Set EMERGENCY_ADMIN_USERNAME and EMERGENCY_ADMIN_PASSWORD to the server test credentials.'
 }
-if ([string]::IsNullOrWhiteSpace($DatabasePath)) { $DatabasePath = 'data/emergency-alerts.db' }
+if ([string]::IsNullOrWhiteSpace($DatabasePath)) { $DatabasePath = 'runtime/data/emergency-alerts.db' }
+$DatabasePath = Resolve-ConfiguredRuntimePath $DatabasePath
 if (-not (Test-Path -LiteralPath $DatabasePath -PathType Leaf)) {
     throw 'Start the local server first and supply its database path.'
 }
 $connections = [System.Collections.Generic.List[object]]::new()
-$expectedPath = Join-Path ([System.IO.Path]::GetTempPath()) ('expected-alert-' + [guid]::NewGuid().ToString() + '.json')
+$expectedPath = Join-Path (New-RuntimeDirectory 'evidence/legacy-checks') ('expected-alert-' + [guid]::NewGuid().ToString() + '.json')
 function Open-Connection {
     $client = [System.Net.Sockets.TcpClient]::new()
     try {

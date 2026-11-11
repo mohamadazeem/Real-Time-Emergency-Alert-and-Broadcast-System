@@ -1,0 +1,99 @@
+HISTORICAL EVIDENCE: the output below retains its original recorded paths.
+Runtime files have since moved: root logs -> runtime/logs; integration-evidence ->
+runtime/evidence (nested logs -> runtime/logs/evidence); demo-dist -> runtime/dist.
+Use README.md and docs/RUNTIME_CLEANUP.md for current commands. Raw output is unchanged.
+
+Receiver completion evidence - 2026-11-11 Asia/Colombo
+Base fb7c4fafc1a882a099ad8cf4fb111615979b4075; uncommitted integration-review
+Temurin 17.0.21+9 / Maven 3.9.16 / normal Maven cache
+
+FINAL BUILD
+[INFO] 
+[INFO] --- jar:3.5.0:jar (default-jar) @ client ---
+[INFO] Building jar: C:\Users\ASUS\Desktop\Network-project\Real-Time-Emergency-Alert-and-Broadcast-System\client\target\client-0.1.0-SNAPSHOT.jar
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for emergency-alert-system 0.1.0-SNAPSHOT:
+[INFO] 
+[INFO] emergency-alert-system ............................. SUCCESS [  0.252 s]
+[INFO] common ............................................. SUCCESS [  6.332 s]
+[INFO] server ............................................. SUCCESS [ 17.625 s]
+[INFO] admin .............................................. SUCCESS [  8.638 s]
+[INFO] client ............................................. SUCCESS [  4.549 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  37.550 s
+[INFO] Finished at: 2026-11-11T17:18:10+05:30
+[INFO] ------------------------------------------------------------------------
+
+ACTUAL SUREFIRE SUITE COUNTS
+"Module","Suite","Tests","Failures","Errors","Skipped"
+"common","edu.ec5205.alert.common.JsonMessageCodecTest","61","0","0","0"
+"server","edu.ec5205.alert.server.AdminCredentialsTest","8","0","0","0"
+"server","edu.ec5205.alert.server.ClientListTest","16","0","0","0"
+"server","edu.ec5205.alert.server.ClientRegistrationTest","22","0","0","0"
+"server","edu.ec5205.alert.server.OutgoingDeliveryTest","7","0","0","0"
+"server","edu.ec5205.alert.server.ServerLimitsTest","3","0","0","0"
+"server","edu.ec5205.alert.server.storage.AcknowledgementQueryTest","23","0","0","0"
+"server","edu.ec5205.alert.server.storage.AcknowledgementTest","14","0","0","0"
+"server","edu.ec5205.alert.server.storage.AlertCreationTest","23","0","0","0"
+"server","edu.ec5205.alert.server.storage.HistoryTest","26","0","0","0"
+"server","edu.ec5205.alert.server.storage.StorageRepositoryTest","14","0","0","0"
+"server","edu.ec5205.alert.server.storage.StorageStartupTest","4","0","0","0"
+"admin","edu.ec5205.alert.admin.AckMonitoringTest","10","0","0","0"
+"admin","edu.ec5205.alert.admin.AdminAuthServiceTest","8","0","0","0"
+"admin","edu.ec5205.alert.admin.AdminConnectionTest","6","0","0","0"
+"admin","edu.ec5205.alert.admin.AdminMainTest","1","0","0","0"
+"admin","edu.ec5205.alert.admin.AdminSessionTest","4","0","0","0"
+"admin","edu.ec5205.alert.admin.AdminUITest","3","0","0","0"
+"admin","edu.ec5205.alert.admin.AlertServiceTest","12","0","0","0"
+"admin","edu.ec5205.alert.admin.ui.PanelLiveUpdatesTest","3","0","0","0"
+"client","edu.ec5205.alert.client.ClientMainTest","1","0","0","0"
+"client","edu.ec5205.alert.client.ConsoleClientIntegrationTest","3","0","0","0"
+"client","edu.ec5205.alert.client.ReceiverWorkflowTest","7","0","0","0"
+"client","edu.ec5205.alert.client.service.AlertHistoryManagerTest","4","0","0","0"
+"client","edu.ec5205.alert.client.storage.ClientIdentityStorageTest","5","0","0","0"
+
+REAL SERVER / PRODUCTION RECEIVER CONTROLLERS
+Evidence directory: C:\Users\ASUS\Desktop\Network-project\Real-Time-Emergency-Alert-and-Broadcast-System\integration-evidence\receiver-workflow-13277917089348908962
+PASS two application controllers register; automatic history; distinct retained identities
+PASS broadcast content; explicit harness ACK -> ACK_RESULT; two live admin updates; duplicate guard; history dedup
+PASS disconnect isolation; manual reconnect retains UUID; automatic missed history
+PASS actual oversized HISTORY error retries 100/50/25/12/6/3; preserves displayed alerts
+PASS normal restart; reconnect both application controllers; stored admin ACK recovery
+ALL RECEIVER WORKFLOW CHECKS PASSED. ACK actions above were invoked by a harness, not a person. Localhost only.
+
+EARLIER REAL-APPLICATION HARNESS REGRESSION
+Evidence directory: C:\Users\ASUS\Desktop\Network-project\Real-Time-Emergency-Alert-and-Broadcast-System\integration-evidence\run-1621346273211296292
+PASS invalid/valid real admin service login
+PASS two receivers listed; duplicate identity and unauthorized connection rejected
+PASS identical broadcast; two harness ACKs; live status; duplicate ACK idempotence; queries
+PASS disconnect isolation; retained identity; explicit history retrieval and manager deduplication
+PASS fresh admin reconnect recovers stored acknowledgement state
+PASS actual ClientMain process registers and displays an alert (console only)
+PASS normal restart persistence; shutdown closes connections and releases port
+LOCAL_LATENCY samples=23 min_ms=6.115 median_ms=9.550 p95_ms=34.382 max_ms=34.382 mean_ms=11.206
+ALL REAL-APPLICATION INTEGRATION CHECKS PASSED; ACKs were harness-generated. GUI/LAN not established by this harness.
+
+PREPARED RUNTIME JAR WORKFLOW
+Evidence directory: C:\Users\ASUS\Desktop\Network-project\Real-Time-Emergency-Alert-and-Broadcast-System\integration-evidence\receiver-workflow-8632837067975354719
+PASS two application controllers register; automatic history; distinct retained identities
+PASS broadcast content; explicit harness ACK -> ACK_RESULT; two live admin updates; duplicate guard; history dedup
+PASS disconnect isolation; manual reconnect retains UUID; automatic missed history
+PASS actual oversized HISTORY error retries 100/50/25/12/6/3; preserves displayed alerts
+PASS normal restart; reconnect both application controllers; stored admin ACK recovery
+ALL RECEIVER WORKFLOW CHECKS PASSED. ACK actions above were invoked by a harness, not a person. Localhost only.
+
+GUI CONTROLS CHECKED VIA COMPUTER USE
+Actual AdminMain and two ClientMain GUI windows against isolated real server; no fixture automatic ACKs.
+Connect A/B: connected, distinct UUIDs, automatic empty history.
+Admin GUI broadcast delivered matching FIRE/CRITICAL content, ID and UTC time to A/B with red highlighting.
+Clicked Acknowledge A: server-confirmed and button disabled; admin live count 1.
+Clicked Acknowledge B: independent confirmation; admin live count 2. These were automation clicks, not human actions.
+Disconnected A; admin sent second alert; B received. B history refresh: 0 new, two rows.
+Reconnected A with same UUID: 1 missed history alert, two rows, original confirmed state retained.
+Unused local port 65530: connection failure shown; restored 5050: successful reconnect/history with no duplicates.
+Closed B via window X: window disappeared; admin live roster retained only A.
+Stopped fixture: all remaining test windows closed and fixture/server exited 0.
+Visual pending transition too fast to capture; deterministic gated-reply test covers pending state.
+No separate-laptop LAN, actual human action, prolonged blackholed network or visual oversized-history/error-result test.

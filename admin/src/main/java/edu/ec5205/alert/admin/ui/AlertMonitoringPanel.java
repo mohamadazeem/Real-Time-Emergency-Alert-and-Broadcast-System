@@ -60,12 +60,13 @@ public final class AlertMonitoringPanel extends JPanel {
         public void onMessage(ProtocolMessage message) {
             if (!(message instanceof Messages.AckStatus ackStatus)) return;
 
-            // Only update if the push matches the currently displayed alert
-            AlertEntry selected = (AlertEntry) alertCombo.getSelectedItem();
-            if (selected == null || !selected.alertId().equals(ackStatus.alertId())) return;
-
-            SwingUtilities.invokeLater(() ->
-                    addRowIfNotDuplicate(ackStatus.clientId(), ackStatus.acknowledgedAt()));
+            SwingUtilities.invokeLater(() -> {
+                // Read selection on the EDT, when this update is actually applied.
+                AlertEntry selected = (AlertEntry) alertCombo.getSelectedItem();
+                if (selected != null && selected.alertId().equals(ackStatus.alertId())) {
+                    addRowIfNotDuplicate(ackStatus.clientId(), ackStatus.acknowledgedAt());
+                }
+            });
         }
     };
 
@@ -245,7 +246,10 @@ public final class AlertMonitoringPanel extends JPanel {
      */
     private void registerCleanupOnRemoval() {
         addAncestorListener(new AncestorListener() {
-            @Override public void ancestorAdded(AncestorEvent e) {}
+            @Override public void ancestorAdded(AncestorEvent e) {
+                connection.removeListener(ackStatusListener);
+                connection.addListener(ackStatusListener);
+            }
             @Override public void ancestorMoved(AncestorEvent e) {}
 
             @Override

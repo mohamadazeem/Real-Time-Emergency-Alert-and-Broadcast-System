@@ -124,7 +124,10 @@ public final class ConnectedClientsPanel extends JPanel {
 
     private void registerCleanupOnRemoval() {
         addAncestorListener(new AncestorListener() {
-            @Override public void ancestorAdded(AncestorEvent e) {}
+            @Override public void ancestorAdded(AncestorEvent e) {
+                connection.removeListener(clientListListener);
+                connection.addListener(clientListListener);
+            }
             @Override public void ancestorMoved(AncestorEvent e) {}
 
             @Override

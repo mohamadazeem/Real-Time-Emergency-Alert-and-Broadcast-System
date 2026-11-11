@@ -11,7 +11,6 @@ import edu.ec5205.alert.common.Messages.Registered;
 
 import java.io.IOException;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -101,6 +100,7 @@ public final class ConsoleClient implements ClientListener {
         System.out.println("Category: " + alert.category());
         System.out.println("Priority: " + alert.priority());
         System.out.println("Timestamp: " + alert.createdAt());
+        System.out.println("Alert ID: " + alert.id());
         System.out.println("========================================");
         System.out.println();
     }
@@ -122,33 +122,14 @@ public final class ConsoleClient implements ClientListener {
     }
 
     public static void main(String[] args) {
-        String host = "127.0.0.1";
-        int port = 5050;
-        String name = "Receiver 01";
-        Path idPath = null;
-
-        for (int i = 0; i < args.length; i++) {
-            if ("--host".equalsIgnoreCase(args[i]) && i + 1 < args.length) {
-                host = args[++i];
-            } else if ("--port".equalsIgnoreCase(args[i]) && i + 1 < args.length) {
-                port = Integer.parseInt(args[++i]);
-            } else if ("--name".equalsIgnoreCase(args[i]) && i + 1 < args.length) {
-                name = args[++i];
-            } else if ("--id-file".equalsIgnoreCase(args[i]) && i + 1 < args.length) {
-                idPath = Paths.get(args[++i]);
-            } else if (i == 0 && !args[i].startsWith("--")) {
-                host = args[i];
-            } else if (i == 1 && !args[i].startsWith("--")) {
-                port = Integer.parseInt(args[i]);
-            } else if (i == 2 && !args[i].startsWith("--")) {
-                name = args[i];
-            } else if (i == 3 && !args[i].startsWith("--")) {
-                idPath = Paths.get(args[i]);
-            }
+        edu.ec5205.alert.client.ClientMain.Options options = edu.ec5205.alert.client.ClientMain.Options.parse(args);
+        ConsoleClient client = new ConsoleClient(options.host(), options.port(), options.name(), options.identityPath());
+        try { client.start(); }
+        catch (java.io.UncheckedIOException | IllegalStateException e) {
+            System.err.println("Unable to load/save receiver identity. Restore the identity file or choose a new --id-file path.");
+            client.stop();
+            return;
         }
-
-        ConsoleClient client = new ConsoleClient(host, port, name, idPath);
-        client.start();
 
         // Keep main thread alive while listening
         try {

@@ -15,6 +15,7 @@ class ClientIdentityStorageTest {
 
     @Test
     void generatesAndPersistsNewUuidWhenFileDoesNotExist(@TempDir Path tempDir) {
+        assertEquals(Path.of("runtime/data/client-identity.json"), ClientIdentityStorage.defaultPath());
         Path identityFile = tempDir.resolve("new-client.json");
         assertFalse(Files.exists(identityFile));
 
@@ -56,15 +57,21 @@ class ClientIdentityStorageTest {
     }
 
     @Test
-    void recoversGracefullyFromCorruptedIdentityFile(@TempDir Path tempDir) throws IOException {
+    void preservesCorruptedIdentityFileAndReportsFailure(@TempDir Path tempDir) throws IOException {
         Path identityFile = tempDir.resolve("corrupted.json");
         Files.writeString(identityFile, "{ corrupted invalid json content !!!");
 
-        ClientIdentity recovered = ClientIdentityStorage.loadOrCreate(identityFile, "Recovered Client");
-        assertNotNull(recovered);
-        assertNotNull(recovered.clientId());
-        assertDoesNotThrow(() -> UUID.fromString(recovered.clientId()));
-        assertEquals("Recovered Client", recovered.clientName());
+        assertThrows(IllegalStateException.class, () -> ClientIdentityStorage.loadOrCreate(identityFile, "Recovered Client"));
+        assertEquals("{ corrupted invalid json content !!!", Files.readString(identityFile));
+    }
+
+    @Test
+    void failedIdentityWriteIsReportedBeforeConnecting(@TempDir Path tempDir) throws IOException {
+        Path parentFile = tempDir.resolve("not-a-directory");
+        Files.writeString(parentFile, "preserve");
+        assertThrows(java.io.UncheckedIOException.class,
+                () -> ClientIdentityStorage.loadOrCreate(parentFile.resolve("identity.json"), "Receiver"));
+        assertEquals("preserve", Files.readString(parentFile));
     }
 }
 

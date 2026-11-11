@@ -10,6 +10,7 @@ import java.net.Socket;
 import java.sql.SQLException;
 import java.util.Set;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
@@ -19,17 +20,17 @@ import java.util.concurrent.SynchronousQueue;
 
 /** Bounded concurrent JSON server with receiver registration and admin login. */
 public final class ServerMain {
-    private static final int PORT = 5050;
-
     private ServerMain() {}
 
     public static void main(String[] args) {
         AdminCredentials credentials;
         ServerLimits limits;
+        int port;
         ConnectionRegistry registry = new ConnectionRegistry();
         try {
             credentials = AdminCredentials.fromEnvironment(System.getenv());
             limits = ServerLimits.fromEnvironment(System.getenv());
+            port = portFromEnvironment(System.getenv());
         } catch (IllegalArgumentException e) {
             System.err.println("Server configuration error: " + e.getMessage());
             System.exit(1);
@@ -53,7 +54,7 @@ public final class ServerMain {
             System.exit(1);
             return;
         }
-        try (ServerSocket serverSocket = new ServerSocket(PORT)) {
+        try (ServerSocket serverSocket = new ServerSocket(port)) {
             ExecutorService executor = connectionExecutor(limits);
             Set<ClientConnection> connections = ConcurrentHashMap.newKeySet();
             Thread shutdownHook = new Thread(
@@ -61,14 +62,14 @@ public final class ServerMain {
             Runtime.getRuntime().addShutdownHook(shutdownHook);
             try {
                 while (true) {
-                    System.out.println("Server is listening on port " + PORT + " and waiting for a connection...");
+                    System.out.println("Server is listening on port " + port + " and waiting for a connection...");
 
                     Socket socket;
                     try {
                         socket = serverSocket.accept();
                     } catch (IOException e) {
                         if (!serverSocket.isClosed()) {
-                            System.err.println("Listener accept error on port " + PORT + ": " + e.getMessage());
+                            System.err.println("Listener accept error on port " + port + ": " + e.getMessage());
                         }
                         break;
                     }
@@ -96,8 +97,16 @@ public final class ServerMain {
                 }
             }
         } catch (IOException e) {
-            System.err.println("Listener I/O error on port " + PORT + ": " + e.getMessage());
+            System.err.println("Listener I/O error on port " + port + ": " + e.getMessage());
         }
+    }
+
+    static int portFromEnvironment(Map<String, String> environment) {
+        try {
+            int port = Integer.parseInt(environment.getOrDefault("EMERGENCY_PORT", "5050"));
+            if (port >= 1 && port <= 65535) return port;
+        } catch (NumberFormatException ignored) { }
+        throw new IllegalArgumentException("EMERGENCY_PORT must be an integer between 1 and 65535.");
     }
 
     static ThreadPoolExecutor connectionExecutor(ServerLimits limits) {

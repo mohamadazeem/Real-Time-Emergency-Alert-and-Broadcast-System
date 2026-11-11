@@ -29,7 +29,7 @@ public final class SqliteDatabase {
     }
 
     public static Path pathFromEnvironment(Map<String, String> environment) {
-        String value = environment.getOrDefault("EMERGENCY_DB_PATH", "data/emergency-alerts.db");
+        String value = environment.getOrDefault("EMERGENCY_DB_PATH", "runtime/data/emergency-alerts.db");
         if (value.isBlank()) throw new IllegalArgumentException("EMERGENCY_DB_PATH must be a non-blank database file path.");
         return Path.of(value);
     }

@@ -17,10 +17,10 @@
 *.sqlite3-*
 *.db3
 *.db3-*
-data/
 *.log
 .DS_Store
 Thumbs.db
+/runtime/
 
 
 

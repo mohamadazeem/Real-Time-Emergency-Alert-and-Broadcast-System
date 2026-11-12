@@ -7,9 +7,12 @@ import edu.ec5205.alert.common.Messages;
 import edu.ec5205.alert.common.ProtocolMessage;
 
 import javax.swing.*;
+import javax.swing.border.CompoundBorder;
 import javax.swing.border.EmptyBorder;
+import javax.swing.border.LineBorder;
 import javax.swing.event.AncestorEvent;
 import javax.swing.event.AncestorListener;
+import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.time.Duration;
@@ -19,15 +22,7 @@ import java.util.Set;
 
 /**
  * Panel for real-time alert acknowledgement monitoring.
- * <p>
- * Allows the administrator to:
- * <ul>
- *   <li>Select an alert from recent history via a combo box</li>
- *   <li>Query existing acknowledgements via GET_ACKS</li>
- *   <li>Receive live ACK_STATUS push messages from the server</li>
- * </ul>
- * All network operations are run off the Event Dispatch Thread.
- * Listener is cleaned up when the panel is removed from the component hierarchy.
+ * Modernized with clean card layout, styled table with acknowledgement markers, and live push updates.
  */
 public final class AlertMonitoringPanel extends JPanel {
 
@@ -45,8 +40,8 @@ public final class AlertMonitoringPanel extends JPanel {
     // ── Alert selector ─────────────────────────────────────────────────────
     private final DefaultComboBoxModel<AlertEntry> comboModel = new DefaultComboBoxModel<>();
     private final JComboBox<AlertEntry> alertCombo = new JComboBox<>(comboModel);
-    private final JButton loadAlertsButton   = new JButton("Load Alerts");
-    private final JButton queryAcksButton    = new JButton("Query ACKs");
+    private final JButton loadAlertsButton   = new JButton("📥  Load Alerts");
+    private final JButton queryAcksButton    = new JButton("🔍  Query ACKs");
     private final JProgressBar progressBar   = new JProgressBar();
     private final JLabel statusLabel         = new JLabel("Load alerts, then select one to query acknowledgements.");
 
@@ -70,8 +65,6 @@ public final class AlertMonitoringPanel extends JPanel {
         }
     };
 
-    // ─────────────────────────────────────────────────────────────────────────
-
     public AlertMonitoringPanel(AdminConnection connection, AdminAuthService authService) {
         this.connection  = connection;
         this.authService = authService;
@@ -84,8 +77,9 @@ public final class AlertMonitoringPanel extends JPanel {
     // ── UI construction ───────────────────────────────────────────────────
 
     private void initUI() {
-        setLayout(new BorderLayout(10, 10));
-        setBorder(new EmptyBorder(15, 20, 15, 20));
+        setLayout(new BorderLayout(15, 15));
+        setBackground(Theme.CONTENT_BG);
+        setBorder(new EmptyBorder(20, 24, 20, 24));
 
         add(buildTopPanel(),    BorderLayout.NORTH);
         add(buildCenterPanel(), BorderLayout.CENTER);
@@ -93,18 +87,54 @@ public final class AlertMonitoringPanel extends JPanel {
     }
 
     private JPanel buildTopPanel() {
-        JPanel top = new JPanel(new BorderLayout(10, 6));
+        JPanel top = Theme.card(new BorderLayout(10, 8));
 
-        JLabel info = new JLabel("<html><b>ACK Monitoring:</b> "
-                + "Query acknowledgements for a broadcast alert, and receive live ACK_STATUS updates.</html>");
-        top.add(info, BorderLayout.NORTH);
+        JPanel titleBox = new JPanel(new BorderLayout(4, 4));
+        titleBox.setOpaque(false);
+        JLabel titleLabel = new JLabel("Alert Monitoring");
+        titleLabel.setFont(new Font("SansSerif", Font.BOLD, 17));
+        titleLabel.setForeground(Theme.TEXT_PRIMARY);
+
+        JLabel info = new JLabel("Query acknowledgements for an alert broadcast, and receive live ACK_STATUS push updates.");
+        info.setFont(Theme.FONT_SMALL);
+        info.setForeground(Theme.TEXT_SECONDARY);
+
+        titleBox.add(titleLabel, BorderLayout.NORTH);
+        titleBox.add(info, BorderLayout.SOUTH);
+        top.add(titleBox, BorderLayout.NORTH);
 
         // Alert selector row
-        JPanel selectorRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
-        selectorRow.add(new JLabel("Alert:"));
-        alertCombo.setPreferredSize(new Dimension(380, 26));
+        JPanel selectorRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 6));
+        selectorRow.setOpaque(false);
+
+        JLabel selLabel = new JLabel("Select Alert:");
+        selLabel.setFont(Theme.FONT_LABEL);
+        selLabel.setForeground(Theme.TEXT_PRIMARY);
+        selectorRow.add(selLabel);
+
+        alertCombo.setPreferredSize(new Dimension(380, 32));
+        alertCombo.setFont(Theme.FONT_BODY);
+        alertCombo.setBackground(Color.WHITE);
         alertCombo.setRenderer(new AlertComboRenderer());
         selectorRow.add(alertCombo);
+
+        loadAlertsButton.setFont(Theme.FONT_LABEL);
+        loadAlertsButton.setBackground(Color.WHITE);
+        loadAlertsButton.setForeground(Theme.ACCENT);
+        loadAlertsButton.setBorder(new CompoundBorder(
+                new LineBorder(Theme.ACCENT, 1),
+                new EmptyBorder(7, 14, 7, 14)
+        ));
+        loadAlertsButton.setFocusPainted(false);
+        loadAlertsButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+
+        queryAcksButton.setFont(Theme.FONT_LABEL);
+        queryAcksButton.setBackground(Theme.ACCENT);
+        queryAcksButton.setForeground(Color.WHITE);
+        queryAcksButton.setBorder(new EmptyBorder(8, 16, 8, 16));
+        queryAcksButton.setFocusPainted(false);
+        queryAcksButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+
         selectorRow.add(loadAlertsButton);
         selectorRow.add(queryAcksButton);
         top.add(selectorRow, BorderLayout.CENTER);
@@ -120,17 +150,44 @@ public final class AlertMonitoringPanel extends JPanel {
         return top;
     }
 
-    private JScrollPane buildCenterPanel() {
-        ackTable.setFillsViewportHeight(true);
-        ackTable.setRowHeight(24);
-        ackTable.getColumnModel().getColumn(0).setPreferredWidth(240);
-        ackTable.getColumnModel().getColumn(1).setPreferredWidth(220);
-        return new JScrollPane(ackTable);
+    private JPanel buildCenterPanel() {
+        JPanel centerCard = Theme.card(new BorderLayout(0, 0));
+        centerCard.setBorder(new CompoundBorder(
+                new LineBorder(Theme.BORDER, 1),
+                new EmptyBorder(0, 0, 0, 0)
+        ));
+
+        Theme.styleTable(ackTable);
+        ackTable.getColumnModel().getColumn(0).setPreferredWidth(260);
+        ackTable.getColumnModel().getColumn(1).setPreferredWidth(260);
+
+        // Custom renderer for Acknowledged At with checkmark icon
+        ackTable.getColumnModel().getColumn(1).setCellRenderer(new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected,
+                                                           boolean hasFocus, int row, int column) {
+                Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+                if (value != null && !isSelected) {
+                    setText("✅  " + value);
+                    setForeground(Theme.SUCCESS);
+                    setFont(Theme.FONT_BODY);
+                }
+                return c;
+            }
+        });
+
+        JScrollPane scrollPane = new JScrollPane(ackTable);
+        scrollPane.setBorder(null);
+        scrollPane.getViewport().setBackground(Color.WHITE);
+        centerCard.add(scrollPane, BorderLayout.CENTER);
+        return centerCard;
     }
 
     private JPanel buildBottomPanel() {
         JPanel bottom = new JPanel(new BorderLayout());
-        statusLabel.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        bottom.setOpaque(false);
+        statusLabel.setFont(Theme.FONT_BODY);
+        statusLabel.setForeground(Theme.TEXT_SECONDARY);
         bottom.add(statusLabel, BorderLayout.WEST);
         return bottom;
     }
@@ -228,13 +285,13 @@ public final class AlertMonitoringPanel extends JPanel {
         loadAlertsButton.setEnabled(!loading);
         queryAcksButton.setEnabled(!loading);
         if (statusText != null) {
-            statusLabel.setForeground(Color.DARK_GRAY);
+            statusLabel.setForeground(Theme.ACCENT);
             statusLabel.setText(statusText);
         }
     }
 
     private void setStatus(boolean ok, String text) {
-        statusLabel.setForeground(ok ? new Color(20, 120, 30) : new Color(180, 40, 40));
+        statusLabel.setForeground(ok ? Theme.SUCCESS : Theme.DANGER);
         statusLabel.setText(text);
     }
 
@@ -291,4 +348,3 @@ public final class AlertMonitoringPanel extends JPanel {
         }
     }
 }
-

@@ -18,113 +18,289 @@ import java.net.ConnectException;
  */
 public final class LoginFrame extends JFrame {
 
-    private final JTextField hostField = new JTextField(AdminConnection.DEFAULT_HOST, 15);
-    private final JTextField portField = new JTextField(String.valueOf(AdminConnection.DEFAULT_PORT), 6);
-    private final JTextField usernameField = new JTextField("admin", 15);
+    // ── Design tokens (inline — no Theme.java dependency) ──────────────────
+    private static final Color NAV_BG       = new Color(15,  23,  42);
+    private static final Color ACCENT       = new Color(37,  99,  235);
+    private static final Color CONTENT_BG   = new Color(248, 250, 252);
+    private static final Color BORDER       = new Color(226, 232, 240);
+    private static final Color TEXT_SECONDARY = new Color(100, 116, 139);
+    private static final Color DANGER       = new Color(239, 68,  68);
+    private static final Color SUCCESS      = new Color(16,  185, 129);
+
+    // ── Form fields (preserve existing field names & types) ────────────────
+    private final JTextField     hostField     = new JTextField(AdminConnection.DEFAULT_HOST, 15);
+    private final JTextField     portField     = new JTextField(String.valueOf(AdminConnection.DEFAULT_PORT), 6);
+    private final JTextField     usernameField = new JTextField("admin", 15);
     private final JPasswordField passwordField = new JPasswordField(15);
 
-    private final JButton loginButton = new JButton("Connect & Authenticate");
-    private final JLabel statusLabel = new JLabel(" ");
+    private final JButton   loginButton = new JButton("Connect & Authenticate");
+    private final JLabel    statusLabel = new JLabel(" ");
     private final JProgressBar progressBar = new JProgressBar();
+
+    // ── Password show/hide toggle ──────────────────────────────────────────
+    private final JButton eyeButton = new JButton("\uD83D\uDC41"); // 👁
+    private boolean passwordVisible = false;
 
     public LoginFrame() {
         initUI();
     }
 
+    // ══════════════════════════════════════════════════════════════════════
+    //  UI CONSTRUCTION
+    // ══════════════════════════════════════════════════════════════════════
+
     private void initUI() {
         setTitle("Emergency Alert System — Administrator Login");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setResizable(false);
+        setMinimumSize(new Dimension(900, 600));
 
-        JPanel mainPanel = new JPanel(new BorderLayout(15, 15));
-        mainPanel.setBorder(new EmptyBorder(25, 30, 25, 30));
+        // Root: two panels side-by-side
+        JPanel root = new JPanel(new BorderLayout());
+        root.add(buildLeftPanel(),  BorderLayout.WEST);
+        root.add(buildRightPanel(), BorderLayout.CENTER);
 
-        // Header Banner
-        JPanel headerPanel = new JPanel(new GridLayout(2, 1, 4, 4));
-        JLabel titleLabel = new JLabel("Admin Control Center");
-        titleLabel.setFont(new Font("SansSerif", Font.BOLD, 18));
-        titleLabel.setForeground(new Color(30, 45, 65));
-
-        JLabel subtitleLabel = new JLabel("Real-Time Emergency Alert & Broadcast System");
-        subtitleLabel.setFont(new Font("SansSerif", Font.PLAIN, 12));
-        subtitleLabel.setForeground(new Color(100, 110, 125));
-
-        headerPanel.add(titleLabel);
-        headerPanel.add(subtitleLabel);
-        mainPanel.add(headerPanel, BorderLayout.NORTH);
-
-        // Center Form Panel
-        JPanel formPanel = new JPanel(new GridBagLayout());
-        formPanel.setBorder(new CompoundBorder(
-                new LineBorder(new Color(220, 225, 230)),
-                new EmptyBorder(15, 15, 15, 15)
-        ));
-
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.insets = new Insets(6, 6, 6, 6);
-
-        // Server IP & Port
-        gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0.0;
-        formPanel.add(new JLabel("Server Host:"), gbc);
-
-        gbc.gridx = 1; gbc.gridy = 0; gbc.weightx = 1.0;
-        formPanel.add(hostField, gbc);
-
-        gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0.0;
-        formPanel.add(new JLabel("Server Port:"), gbc);
-
-        gbc.gridx = 1; gbc.gridy = 1; gbc.weightx = 1.0;
-        formPanel.add(portField, gbc);
-
-        // Username & Password
-        gbc.gridx = 0; gbc.gridy = 2; gbc.weightx = 0.0;
-        formPanel.add(new JLabel("Admin User:"), gbc);
-
-        gbc.gridx = 1; gbc.gridy = 2; gbc.weightx = 1.0;
-        formPanel.add(usernameField, gbc);
-
-        gbc.gridx = 0; gbc.gridy = 3; gbc.weightx = 0.0;
-        formPanel.add(new JLabel("Password:"), gbc);
-
-        gbc.gridx = 1; gbc.gridy = 3; gbc.weightx = 1.0;
-        formPanel.add(passwordField, gbc);
-
-        mainPanel.add(formPanel, BorderLayout.CENTER);
-
-        // Bottom Actions and Status
-        JPanel bottomPanel = new JPanel(new BorderLayout(8, 8));
-
-        progressBar.setIndeterminate(true);
-        progressBar.setVisible(false);
-        statusLabel.setFont(new Font("SansSerif", Font.PLAIN, 12));
-        statusLabel.setHorizontalAlignment(SwingConstants.CENTER);
-
-        JPanel statusBox = new JPanel(new BorderLayout(4, 4));
-        statusBox.add(progressBar, BorderLayout.NORTH);
-        statusBox.add(statusLabel, BorderLayout.CENTER);
-        bottomPanel.add(statusBox, BorderLayout.NORTH);
-
-        loginButton.setFont(new Font("SansSerif", Font.BOLD, 13));
-        loginButton.setBackground(new Color(40, 80, 140));
-        loginButton.setForeground(Color.WHITE);
-        loginButton.setFocusPainted(false);
-        loginButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        loginButton.addActionListener(e -> attemptLogin());
-        getRootPane().setDefaultButton(loginButton);
-
-        bottomPanel.add(loginButton, BorderLayout.SOUTH);
-
-        mainPanel.add(bottomPanel, BorderLayout.SOUTH);
-
-        setContentPane(mainPanel);
+        setContentPane(root);
         pack();
         setLocationRelativeTo(null);
     }
 
+    // ── LEFT PANEL (40 %) ─────────────────────────────────────────────────
+    private JPanel buildLeftPanel() {
+        JPanel panel = new JPanel() {
+            @Override
+            public Dimension getPreferredSize() {
+                // Always 40 % of window minimum width
+                Dimension parent = LoginFrame.this.getSize();
+                int w = parent.width > 0 ? (int)(parent.width * 0.40) : 360;
+                return new Dimension(Math.max(w, 320), 600);
+            }
+        };
+        panel.setBackground(NAV_BG);
+        panel.setLayout(new BorderLayout());
+
+        // ── Centre branding ──
+        JPanel centre = new JPanel();
+        centre.setOpaque(false);
+        centre.setLayout(new BoxLayout(centre, BoxLayout.Y_AXIS));
+        centre.setBorder(new EmptyBorder(0, 30, 0, 30));
+
+        JLabel icon = new JLabel("\uD83D\uDEA8", SwingConstants.CENTER); // 🚨
+        icon.setFont(new Font("SansSerif", Font.PLAIN, 64));
+        icon.setForeground(Color.WHITE);
+        icon.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        JLabel appName = new JLabel("Emergency Alert System", SwingConstants.CENTER);
+        appName.setFont(new Font("SansSerif", Font.BOLD, 22));
+        appName.setForeground(Color.WHITE);
+        appName.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        JLabel tagline = new JLabel("Real-Time Broadcast & Management", SwingConstants.CENTER);
+        tagline.setFont(new Font("SansSerif", Font.PLAIN, 13));
+        tagline.setForeground(new Color(148, 163, 184));
+        tagline.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        centre.add(Box.createVerticalGlue());
+        centre.add(icon);
+        centre.add(Box.createVerticalStrut(16));
+        centre.add(appName);
+        centre.add(Box.createVerticalStrut(8));
+        centre.add(tagline);
+        centre.add(Box.createVerticalGlue());
+
+        panel.add(centre, BorderLayout.CENTER);
+        return panel;
+    }
+
+    // ── RIGHT PANEL (60 %) ────────────────────────────────────────────────
+    private JPanel buildRightPanel() {
+        JPanel outer = new JPanel(new GridBagLayout());
+        outer.setBackground(CONTENT_BG);
+
+        JPanel form = new JPanel();
+        form.setBackground(Color.WHITE);
+        form.setLayout(new BoxLayout(form, BoxLayout.Y_AXIS));
+        form.setBorder(new CompoundBorder(
+                new LineBorder(BORDER, 1),
+                new EmptyBorder(36, 40, 36, 40)
+        ));
+        form.setMaximumSize(new Dimension(440, Integer.MAX_VALUE));
+
+        // Heading
+        JLabel heading = new JLabel("Administrator Login");
+        heading.setFont(new Font("SansSerif", Font.BOLD, 24));
+        heading.setForeground(NAV_BG);
+        heading.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        JLabel subtitle = new JLabel("Sign in to manage emergency broadcasts");
+        subtitle.setFont(new Font("SansSerif", Font.PLAIN, 13));
+        subtitle.setForeground(TEXT_SECONDARY);
+        subtitle.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        form.add(heading);
+        form.add(Box.createVerticalStrut(6));
+        form.add(subtitle);
+        form.add(Box.createVerticalStrut(28));
+
+        // Fields
+        form.add(labeledField("Server Host", hostField, "127.0.0.1"));
+        form.add(Box.createVerticalStrut(14));
+        form.add(labeledField("Server Port", portField, "5050"));
+        form.add(Box.createVerticalStrut(14));
+        form.add(labeledField("Username", usernameField, "classroom-admin"));
+        form.add(Box.createVerticalStrut(14));
+        form.add(buildPasswordRow());
+        form.add(Box.createVerticalStrut(24));
+
+        // Progress bar
+        progressBar.setIndeterminate(true);
+        progressBar.setVisible(false);
+        progressBar.setMaximumSize(new Dimension(Integer.MAX_VALUE, 4));
+        progressBar.setAlignmentX(Component.LEFT_ALIGNMENT);
+        form.add(progressBar);
+        form.add(Box.createVerticalStrut(10));
+
+        // Login button
+        styleLoginButton();
+        loginButton.setAlignmentX(Component.LEFT_ALIGNMENT);
+        loginButton.setMaximumSize(new Dimension(Integer.MAX_VALUE, 42));
+        loginButton.addActionListener(e -> attemptLogin());
+        getRootPane().setDefaultButton(loginButton);
+        form.add(loginButton);
+        form.add(Box.createVerticalStrut(10));
+
+        // Status label
+        statusLabel.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        statusLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        form.add(statusLabel);
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.fill = GridBagConstraints.BOTH;
+        gbc.insets = new Insets(40, 60, 40, 60);
+        gbc.weightx = 1;
+        gbc.weighty = 1;
+        outer.add(form, gbc);
+
+        return outer;
+    }
+
+    /** Creates a label + field stacked vertically, full-width. */
+    private JPanel labeledField(String labelText, JTextField field, String placeholder) {
+        JPanel panel = new JPanel();
+        panel.setOpaque(false);
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        JLabel label = new JLabel(labelText);
+        label.setFont(new Font("SansSerif", Font.BOLD, 12));
+        label.setForeground(NAV_BG);
+        label.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        styleTextField(field);
+        field.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+        field.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        // Placeholder hint via tool-tip (JTextField has no built-in placeholder)
+        if (field.getText().trim().isEmpty()) {
+            field.setToolTipText(placeholder);
+        }
+
+        panel.add(label);
+        panel.add(Box.createVerticalStrut(4));
+        panel.add(field);
+        return panel;
+    }
+
+    /** Password row: label above, then field + toggle side-by-side. */
+    private JPanel buildPasswordRow() {
+        JPanel panel = new JPanel();
+        panel.setOpaque(false);
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        JLabel label = new JLabel("Password");
+        label.setFont(new Font("SansSerif", Font.BOLD, 12));
+        label.setForeground(NAV_BG);
+        label.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        // Field + toggle in a row
+        JPanel fieldRow = new JPanel(new BorderLayout(4, 0));
+        fieldRow.setOpaque(false);
+        fieldRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+        fieldRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+
+        stylePasswordField(passwordField);
+        styleEyeButton();
+
+        fieldRow.add(passwordField, BorderLayout.CENTER);
+        fieldRow.add(eyeButton,     BorderLayout.EAST);
+
+        panel.add(label);
+        panel.add(Box.createVerticalStrut(4));
+        panel.add(fieldRow);
+        return panel;
+    }
+
+    // ── Styling helpers ───────────────────────────────────────────────────
+
+    private void styleTextField(JTextField field) {
+        field.setBorder(new CompoundBorder(
+                new LineBorder(BORDER, 1),
+                new EmptyBorder(8, 10, 8, 10)
+        ));
+        field.setFont(new Font("SansSerif", Font.PLAIN, 13));
+    }
+
+    private void stylePasswordField(JPasswordField field) {
+        field.setBorder(new CompoundBorder(
+                new LineBorder(BORDER, 1),
+                new EmptyBorder(8, 10, 8, 10)
+        ));
+        field.setFont(new Font("SansSerif", Font.PLAIN, 13));
+    }
+
+    private void styleLoginButton() {
+        loginButton.setFont(new Font("SansSerif", Font.BOLD, 14));
+        loginButton.setBackground(ACCENT);
+        loginButton.setForeground(Color.WHITE);
+        loginButton.setFocusPainted(false);
+        loginButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        loginButton.setBorder(new EmptyBorder(10, 20, 10, 20));
+        loginButton.setOpaque(true);
+    }
+
+    private void styleEyeButton() {
+        eyeButton.setFont(new Font("SansSerif", Font.PLAIN, 14));
+        eyeButton.setFocusPainted(false);
+        eyeButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        eyeButton.setBorder(new CompoundBorder(
+                new LineBorder(BORDER, 1),
+                new EmptyBorder(4, 8, 4, 8)
+        ));
+        eyeButton.setBackground(Color.WHITE);
+        eyeButton.setOpaque(true);
+        eyeButton.setToolTipText("Show / hide password");
+        eyeButton.addActionListener(e -> togglePasswordVisibility());
+    }
+
+    private void togglePasswordVisibility() {
+        passwordVisible = !passwordVisible;
+        if (passwordVisible) {
+            passwordField.setEchoChar((char) 0);   // reveal
+            eyeButton.setText("\uD83D\uDD12");      // 🔒
+        } else {
+            passwordField.setEchoChar('*');         // hide
+            eyeButton.setText("\uD83D\uDC41");      // 👁
+        }
+        passwordField.requestFocusInWindow();
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  LOGIN LOGIC  (unchanged from original)
+    // ══════════════════════════════════════════════════════════════════════
+
     private void attemptLogin() {
-        String host = hostField.getText().trim();
-        String portStr = portField.getText().trim();
+        String host     = hostField.getText().trim();
+        String portStr  = portField.getText().trim();
         String username = usernameField.getText().trim();
         char[] passwordChars = passwordField.getPassword();
         String password = new String(passwordChars);
@@ -165,7 +341,7 @@ public final class LoginFrame extends JFrame {
         // 2. Prepare UI for connecting state
         setFormEnabled(false);
         progressBar.setVisible(true);
-        statusLabel.setForeground(new Color(40, 90, 160));
+        statusLabel.setForeground(ACCENT);
         statusLabel.setText("Connecting to " + host + ":" + port + "...");
 
         // 3. Run network I/O in background thread using SwingWorker
@@ -195,7 +371,7 @@ public final class LoginFrame extends JFrame {
                 try {
                     LoginOutcome outcome = get();
                     if (outcome.successful()) {
-                        statusLabel.setForeground(new Color(25, 120, 35));
+                        statusLabel.setForeground(SUCCESS);
                         statusLabel.setText("Login successful! Launching dashboard...");
 
                         AlertService alertService = new AlertService(connection, authService);
@@ -227,11 +403,11 @@ public final class LoginFrame extends JFrame {
         portField.setEnabled(enabled);
         usernameField.setEnabled(enabled);
         passwordField.setEnabled(enabled);
+        eyeButton.setEnabled(enabled);
     }
 
     private void showError(String message) {
-        statusLabel.setForeground(new Color(180, 25, 25));
+        statusLabel.setForeground(DANGER);
         statusLabel.setText(message);
     }
 }
-

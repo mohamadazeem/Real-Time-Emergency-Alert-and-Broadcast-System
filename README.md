@@ -60,6 +60,18 @@ before preparing/replacing the distribution. No dependencies were added for clea
 
 ## Start the complete system
 
+To build the project, prepare the distribution, and open the server, admin, and both
+receivers in separate PowerShell windows, run:
+
+```powershell
+& .\scripts\Run-System.ps1
+```
+
+The script prompts privately for the disposable classroom password. Use
+`-Port`, `-ServerHost`, `-AdminUsername`, or `-DatabasePath` to override the defaults.
+Use `-SkipBuild` or `-SkipPrepare` for an already prepared distribution, and
+`-NoReceiverB` to open only receiver A.
+
 Use four PowerShell windows, one per command/application. The launch script prints its
 unique log path under runtime/logs, then waits until the application closes. Console mode
 remains interactive and is not captured, to keep password input out of logs.
